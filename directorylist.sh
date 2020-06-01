@@ -21,9 +21,10 @@ function Delve
 
 
 #if a directory is given as an argument, switch to it.
-if [ -n $1 ]; then
-	cd $1
-fi
+#if [ -n $1 ]; then
+#	cd $1
+#fi
+[[ $1 ]] && cd $1
 
 listOfDirectory=($(ls --literal --format=single-column))
 
