@@ -1,4 +1,6 @@
 import praw
+import subprocess
+import sys
 import requests
 import configparser
 from selenium import webdriver
@@ -48,7 +50,9 @@ def imgurAuthentication(config):
 
 
 
-
+if len(sys.argv) == 2 
+    print "The master record will be updated"
+    subprocess.call(["./directorylist.sh", str(sys.arv[1])
 
 
 config = configparser.ConfigParser()
