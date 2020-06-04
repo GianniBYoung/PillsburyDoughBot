@@ -46,10 +46,10 @@ done
 grep --ignore-case --extended-regexp "\.(png|gif|mp4|jpg|pdf)$" /tmp/images.txt >/tmp/media.txt
 
 # updates the masterMedia.txt file if it has already been created otherwise it creates it
-if [ -a $HOME/Documents/masterMedia.txt ];then
-	diff /tmp/media.txt $HOME/Documents/masterMedia.txt | grep "<" | tr --delete "<" > $HOME/Documents/masterMedia.txt
+if [ -a ./masterMedia.txt ];then
+	diff /tmp/media.txt ./masterMedia.txt | grep "<" | tr --delete "<" > ./masterMedia.txt
 	echo "masterMedia.txt is now up to date."
 else
-	echo "$(</tmp/media.txt)" > $HOME/Documents/masterMedia.txt
-	echo "masterMedia.txt has been created in your Documents folder."
+	echo "$(</tmp/media.txt)" > ./masterMedia.txt
+	echo "masterMedia.txt has been created in the project root folder."
 fi
