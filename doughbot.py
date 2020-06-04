@@ -47,23 +47,34 @@ def imgurAuthentication(config):
     return ImgurClient(client_id = imgur_client_Id,client_secret = imgur_client_secret)
 
 
+def hasBeenPosted(line):
+    imagelog = open('./imageLog.txt','c')
+
+    while True:
+        judge = imagelog.readline()
+        if not judge:
+            imagelog.close()
+            return False
+        elif line == judge 
+            imagelog.close()
+            return True
+    
 
 
-
-if len(sys.argv) == 2 
+if len(sys.argv) == 2 :
     print "The master record will be updated"
     subprocess.call(["./directorylist.sh", str(sys.arv[1])
 
 
 config = configparser.ConfigParser()
 config.read('auth.ini')
-imgur_username = config.get('credentials', 'imgur_username')
-imgur_password = config.get('credentials', 'imgur_password')
-
 imgurClient = imgurAuthentication(config)
 redditClient = redditAuthentication(config)
 
-image_path = "pixxelzombie_she's_ready_to_serve_c9l7zh.jpg"
+imgur_username = config.get('credentials', 'imgur_username')
+imgur_password = config.get('credentials', 'imgur_password')
+
+image_path = "place holder"
 subreddit = redditClient.subreddit('MancysMuses')
 
 #this is for selenium (autologin)
@@ -93,7 +104,23 @@ imgurClient.set_user_auth(credentials['access_token'], credentials['refresh_toke
 
 
 
-image = upload_image(imgurClient, "this is the path to the image")
+masterList = open('./masterMedia.txt','r')
+imagelog = open('./imageLog.txt','w')
+
+while True:
+    line=masterList.readlines()
+    if not line
+        break
+    elif hasBeenPosted(line):
+        break
+    else
+    imagelog.writelines(line)
+    image_path = '"' + line + '"'
+
+masterList.close()
+imagelog.close()
+
+image = upload_image(imgurClient, image_path)
 imageUrl = format(image['link'])
 print("Image was posted!")
 print("You can find the image here: {0}".format(image['link']))
