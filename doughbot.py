@@ -13,7 +13,9 @@ from selenium.webdriver.common.by import By
 from imgurpython import ImgurClient
 
 #this is for selenium (autologin)
-def imgurLogin(imgur, imgur_username, imgur_password):
+def imgurLogin(imgur, config):
+    imgur_username = config.get('credentials', 'imgur_username')
+    imgur_password = config.get('credentials', 'imgur_password')
     authorization_url = imgurClient.get_auth_url('pin')
     driver = webdriver.Firefox()
     driver.get(authorization_url)
@@ -40,7 +42,7 @@ def imgurLogin(imgur, imgur_username, imgur_password):
 
 
 
-
+#uploads an image or a gif to imgur
 def upload_image(client, title):
      config = {
              'title': title,
@@ -65,7 +67,7 @@ def redditAuthentication(config):
 		         user_agent = 'PillsburyDoughBot')
 
 
-    
+
 
 def imgurAuthentication(config):
     config.read('auth.ini')
@@ -76,10 +78,12 @@ def imgurAuthentication(config):
     return ImgurClient(client_id = imgur_client_Id,client_secret = imgur_client_secret)
 
 
+
+
+
 if len(sys.argv) < 2 :
     print("Usage: python3 doughbot.py <subreddit> [Directory of images] \n Directory of images must be provided on first run.")
     exit()
-
 
 
 config = configparser.ConfigParser()
@@ -95,36 +99,34 @@ if len(sys.argv) == 3 :
     print("The master record will be updated")
     subprocess.call(["./directorylist.sh", str(sys.argv[2])])
 
-imgur_username = config.get('credentials', 'imgur_username')
-imgur_password = config.get('credentials', 'imgur_password')
-imgurLogin(imgurClient, imgur_username, imgur_password)
-
+#keeps track of what image should be posted
 imagelogPath=Path('./imageLog.txt')
 if imagelogPath.is_file():
     imagelog = open(imagelogPath,'r')
-    imageToPost=int(imagelog.readline())+1
+    imageToPost = int(imagelog.readline())+1
     imagelog.close()
     imagelog = open(imagelogPath,'w')
     imagelog.write(str(imageToPost))
 else:
     imagelog = open(imagelogPath,'w')
-    imageToPost=0
+    imageToPost = 0
     imagelog.write(imageToPost)
 
 masterList = open('./masterMedia.txt','r')
 with open('./masterMedia.txt') as f:
-    imagePaths=f.read().splitlines()
-
-image_path=imagePaths[imageToPost].strip()    
-image_title= imagePaths[imageToPost].split("/")
-image_title= image_title[len(image_title)-1]
-image_title= image_title.replace("_"," ")
-image_title= image_title.replace("-"," ")
-image_title= image_title.replace("."," ")
-image_title= image_title.rsplit(' ', 2)[0]
+    imagePaths = f.read().splitlines()
+#cleans up the title and provides the path to image to be posted
+image_path = imagePaths[imageToPost].strip()
+image_title = imagePaths[imageToPost].split("/")
+image_title = image_title[len(image_title)-1]
+image_title = image_title.replace("_"," ")
+image_title = image_title.replace("-"," ")
+image_title = image_title.replace("."," ")
+image_title = image_title.rsplit(' ', 2)[0]
 
 masterList.close()
 imagelog.close()
+imgurLogin(imgurClient, config)
 image = upload_image(imgurClient, image_path)
 imageUrl = format(image['link'])
 print("Image was posted!")
