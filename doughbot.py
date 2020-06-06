@@ -51,6 +51,7 @@ def upload_image(client, title):
 
 
 
+
 def redditAuthentication(config):
     config.read('auth.ini')
     reddit_client_Id = config.get('credentials', 'reddit_client_id')
@@ -63,6 +64,7 @@ def redditAuthentication(config):
 		         password = reddit_password,
 		         user_agent = 'PillsburyDoughBot')
 
+
     
 
 def imgurAuthentication(config):
@@ -74,6 +76,9 @@ def imgurAuthentication(config):
     return ImgurClient(client_id = imgur_client_Id,client_secret = imgur_client_secret)
 
 
+if len(sys.argv) < 2 :
+    print("Usage: python3 doughbot.py <subreddit> [Directory of images] \n Directory of images must be provided on first run.")
+    exit()
 
 
 
@@ -82,13 +87,18 @@ config.read('auth.ini')
 imgurClient = imgurAuthentication(config)
 redditClient = redditAuthentication(config)
 
+if len(sys.argv) == 2 :
+    subreddit = redditClient.subreddit(str(sys.argv[1]))
+
+if len(sys.argv) == 3 :
+    subreddit = redditClient.subreddit(str(sys.argv[1]))
+    print("The master record will be updated")
+    subprocess.call(["./directorylist.sh", str(sys.argv[2])])
+
 imgur_username = config.get('credentials', 'imgur_username')
 imgur_password = config.get('credentials', 'imgur_password')
-
-image_path = "this is a placeholder"
-subreddit = redditClient.subreddit('MancysMuses')
-
 imgurLogin(imgurClient, imgur_username, imgur_password)
+
 imagelogPath=Path('./imageLog.txt')
 if imagelogPath.is_file():
     imagelog = open(imagelogPath,'r')
@@ -105,7 +115,7 @@ masterList = open('./masterMedia.txt','r')
 with open('./masterMedia.txt') as f:
     imagePaths=f.read().splitlines()
 
-image_path=imagePaths[imageToPost]    
+image_path=imagePaths[imageToPost].strip()    
 image_title= imagePaths[imageToPost].split("/")
 image_title= image_title[len(image_title)-1]
 image_title= image_title.replace("_"," ")
