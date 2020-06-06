@@ -1,3 +1,4 @@
+from pathlib import Path
 import praw
 import subprocess
 import sys
@@ -11,6 +12,34 @@ from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.common.by import By
 from imgurpython import ImgurClient
 
+#this is for selenium (autologin)
+def imgurLogin(imgur, imgur_username, imgur_password):
+    authorization_url = imgurClient.get_auth_url('pin')
+    driver = webdriver.Firefox()
+    driver.get(authorization_url)
+
+    username = driver.find_element_by_xpath('//*[@id="username"]')
+    password = driver.find_element_by_xpath('//*[@id="password"]')
+    username.clear()
+    username.send_keys(imgur_username)
+    password.send_keys(imgur_password)
+    driver.find_element_by_name("allow").click()
+
+
+    timeout = 5
+    try:
+        element_present = EC.presence_of_element_located((By.ID, 'pin'))
+        WebDriverWait(driver, timeout).until(element_present)
+        pin_element = driver.find_element_by_id('pin')
+        pin = pin_element.get_attribute("value")
+    except TimeoutException:
+        print("Timed out waiting for page to load")
+    driver.close()
+    credentials = imgurClient.authorize(pin,'pin')
+    imgurClient.set_user_auth(credentials['access_token'], credentials['refresh_token'])
+
+
+
 
 def upload_image(client, title):
      config = {
@@ -18,8 +47,6 @@ def upload_image(client, title):
              }
      print ('uploading image')
      image = client.upload_from_path(image_path, config, anon=False)
-     print("done")
-     print()
      return image
 
 
@@ -47,23 +74,7 @@ def imgurAuthentication(config):
     return ImgurClient(client_id = imgur_client_Id,client_secret = imgur_client_secret)
 
 
-def hasBeenPosted(line):
-    imagelog = open('./imageLog.txt','c')
 
-    while True:
-        judge = imagelog.readline()
-        if not judge:
-            imagelog.close()
-            return False
-        elif line == judge 
-            imagelog.close()
-            return True
-    
-
-
-if len(sys.argv) == 2 :
-    print "The master record will be updated"
-    subprocess.call(["./directorylist.sh", str(sys.arv[1])
 
 
 config = configparser.ConfigParser()
@@ -74,54 +85,38 @@ redditClient = redditAuthentication(config)
 imgur_username = config.get('credentials', 'imgur_username')
 imgur_password = config.get('credentials', 'imgur_password')
 
-image_path = "place holder"
+image_path = "this is a placeholder"
 subreddit = redditClient.subreddit('MancysMuses')
 
-#this is for selenium (autologin)
-authorization_url = imgurClient.get_auth_url('pin')
-driver = webdriver.Firefox()
-driver.get(authorization_url)
-
-username = driver.find_element_by_xpath('//*[@id="username"]')
-password = driver.find_element_by_xpath('//*[@id="password"]')
-username.clear()
-username.send_keys(imgur_username)
-password.send_keys(imgur_password)
-driver.find_element_by_name("allow").click()
-
-
-timeout = 5
-try:
-    element_present = EC.presence_of_element_located((By.ID, 'pin'))
-    WebDriverWait(driver, timeout).until(element_present)
-    pin_element = driver.find_element_by_id('pin')
-    pin = pin_element.get_attribute("value")
-except TimeoutException:
-    print("Timed out waiting for page to load")
-driver.close()
-credentials = imgurClient.authorize(pin,'pin')
-imgurClient.set_user_auth(credentials['access_token'], credentials['refresh_token'])
-
-
+imgurLogin(imgurClient, imgur_username, imgur_password)
+imagelogPath=Path('./imageLog.txt')
+if imagelogPath.is_file():
+    imagelog = open(imagelogPath,'r')
+    imageToPost=int(imagelog.readline())+1
+    imagelog.close()
+    imagelog = open(imagelogPath,'w')
+    imagelog.write(str(imageToPost))
+else:
+    imagelog = open(imagelogPath,'w')
+    imageToPost=0
+    imagelog.write(imageToPost)
 
 masterList = open('./masterMedia.txt','r')
-imagelog = open('./imageLog.txt','w')
+with open('./masterMedia.txt') as f:
+    imagePaths=f.read().splitlines()
 
-while True:
-    line=masterList.readlines()
-    if not line
-        break
-    elif hasBeenPosted(line):
-        break
-    else
-    imagelog.writelines(line)
-    image_path = '"' + line + '"'
+image_path=imagePaths[imageToPost]    
+image_title= imagePaths[imageToPost].split("/")
+image_title= image_title[len(image_title)-1]
+image_title= image_title.replace("_"," ")
+image_title= image_title.replace("-"," ")
+image_title= image_title.replace("."," ")
+image_title= image_title.rsplit(' ', 2)[0]
 
 masterList.close()
 imagelog.close()
-
 image = upload_image(imgurClient, image_path)
 imageUrl = format(image['link'])
 print("Image was posted!")
 print("You can find the image here: {0}".format(image['link']))
-subreddit.submit(title = image_path, url = imageUrl)
+subreddit.submit(title = image_title, url = imageUrl)

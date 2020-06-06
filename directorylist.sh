@@ -20,6 +20,7 @@ function Delve
 }
 
 
+startingDirectory=($(pwd))
 #if a directory is given as an argument, switch to it.
 #if [ -n $1 ]; then
 #	cd $1
@@ -44,10 +45,10 @@ done
 
 #removes markdown and other extraneous files
 grep --ignore-case --extended-regexp "\.(png|gif|mp4|jpg|pdf)$" /tmp/images.txt >/tmp/media.txt
-
+cd $startingDirectory
 # updates the masterMedia.txt file if it has already been created otherwise it creates it
 if [ -a ./masterMedia.txt ];then
-	diff /tmp/media.txt ./masterMedia.txt | grep "<" | tr --delete "<" > ./masterMedia.txt
+	diff /tmp/media.txt ./masterMedia.txt | grep "<" | tr --delete "<" >> ./masterMedia.txt
 	echo "masterMedia.txt is now up to date."
 else
 	echo "$(</tmp/media.txt)" > ./masterMedia.txt
