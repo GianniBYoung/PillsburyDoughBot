@@ -1,4 +1,6 @@
 from pathlib import Path
+import schedule
+import time
 import praw
 import subprocess
 import sys
@@ -16,7 +18,7 @@ from imgurpython import ImgurClient
 def imgurLogin(imgur, config):
     imgur_username = config.get('credentials', 'imgur_username')
     imgur_password = config.get('credentials', 'imgur_password')
-    authorization_url = imgurClient.get_auth_url('pin')
+    authorization_url = imgur.get_auth_url('pin')
     driver = webdriver.Firefox()
     driver.get(authorization_url)
 
@@ -37,13 +39,13 @@ def imgurLogin(imgur, config):
     except TimeoutException:
         print("Timed out waiting for page to load")
     driver.close()
-    credentials = imgurClient.authorize(pin,'pin')
-    imgurClient.set_user_auth(credentials['access_token'], credentials['refresh_token'])
+    credentials = imgur.authorize(pin,'pin')
+    imgur.set_user_auth(credentials['access_token'], credentials['refresh_token'])
 
 
 
 #uploads an image or a gif to imgur
-def upload_image(client, title):
+def upload_image(client, title, image_path):
      config = {
              'title': title,
              }
@@ -80,55 +82,66 @@ def imgurAuthentication(config):
 
 
 
+def doughbot():
+    if len(sys.argv) < 2 :
+        print("Usage: python3 doughbot.py <subreddit> [Directory of images] \n Directory of images must be provided on first run.")
+        exit()
 
-if len(sys.argv) < 2 :
-    print("Usage: python3 doughbot.py <subreddit> [Directory of images] \n Directory of images must be provided on first run.")
-    exit()
 
+    config = configparser.ConfigParser()
+    config.read('auth.ini')
+    imgurClient = imgurAuthentication(config)
+    redditClient = redditAuthentication(config)
 
-config = configparser.ConfigParser()
-config.read('auth.ini')
-imgurClient = imgurAuthentication(config)
-redditClient = redditAuthentication(config)
+    if len(sys.argv) == 2 :
+        subreddit = redditClient.subreddit(str(sys.argv[1]))
 
-if len(sys.argv) == 2 :
-    subreddit = redditClient.subreddit(str(sys.argv[1]))
+    if len(sys.argv) == 3 :
+        subreddit = redditClient.subreddit(str(sys.argv[1]))
+        print("The master record will be updated")
+        subprocess.call(["./directorylist.sh", str(sys.argv[2])])
 
-if len(sys.argv) == 3 :
-    subreddit = redditClient.subreddit(str(sys.argv[1]))
-    print("The master record will be updated")
-    subprocess.call(["./directorylist.sh", str(sys.argv[2])])
+    #keeps track of what image should be posted
+    imagelogPath=Path('./imageLog.txt')
+    if imagelogPath.is_file():
+        imagelog = open(imagelogPath,'r')
+        imageToPost = int(imagelog.readline())+1
+        imagelog.close()
+        imagelog = open(imagelogPath,'w')
+        imagelog.write(str(imageToPost))
+    else:
+        imagelog = open(imagelogPath,'w')
+        imageToPost = 0
+        imagelog.write(imageToPost)
+    
+    masterList = open('./masterMedia.txt','r')
+    with open('./masterMedia.txt') as f:
+        imagePaths = f.read().splitlines()
 
-#keeps track of what image should be posted
-imagelogPath=Path('./imageLog.txt')
-if imagelogPath.is_file():
-    imagelog = open(imagelogPath,'r')
-    imageToPost = int(imagelog.readline())+1
+    #cleans up the title and provides the path to image to be posted
+    image_path = imagePaths[imageToPost].strip()
+    image_title = imagePaths[imageToPost].split("/")
+    image_title = image_title[len(image_title)-1]
+    image_title = image_title.replace("_"," ")
+    image_title = image_title.replace("-"," ")
+    image_title = image_title.replace("."," ")
+    image_title = image_title.rsplit(' ', 2)[0]
+    
+    masterList.close()
     imagelog.close()
-    imagelog = open(imagelogPath,'w')
-    imagelog.write(str(imageToPost))
-else:
-    imagelog = open(imagelogPath,'w')
-    imageToPost = 0
-    imagelog.write(imageToPost)
+    imgurLogin(imgurClient, config)
+    image = upload_image(imgurClient, image_title, image_path)
+    imageUrl = format(image['link'])
+    print("You can find the image here: {0}".format(image['link']))
+    subreddit.submit(title = image_title, url = imageUrl)
+    return
 
-masterList = open('./masterMedia.txt','r')
-with open('./masterMedia.txt') as f:
-    imagePaths = f.read().splitlines()
-#cleans up the title and provides the path to image to be posted
-image_path = imagePaths[imageToPost].strip()
-image_title = imagePaths[imageToPost].split("/")
-image_title = image_title[len(image_title)-1]
-image_title = image_title.replace("_"," ")
-image_title = image_title.replace("-"," ")
-image_title = image_title.replace("."," ")
-image_title = image_title.rsplit(' ', 2)[0]
+   #For scheduling task execution
 
-masterList.close()
-imagelog.close()
-imgurLogin(imgurClient, config)
-image = upload_image(imgurClient, image_path)
-imageUrl = format(image['link'])
-print("Image was posted!")
-print("You can find the image here: {0}".format(image['link']))
-subreddit.submit(title = image_title, url = imageUrl)
+def job():
+    print("I'm working...")
+
+schedule.every(4).to(8).hours.do(doughbot)
+while True:
+    schedule.run_pending()
+    time.sleep(1)

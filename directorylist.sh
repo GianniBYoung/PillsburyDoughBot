@@ -41,7 +41,7 @@ for directory in ${listOfDirectory[@]}; do
 done
 
 #removes markdown and other extraneous files
-grep --ignore-case --extended-regexp "\.(png|gif|mp4|jpg|pdf)$" /tmp/images.txt >/tmp/media.txt
+grep --ignore-case --extended-regexp "\.(png|gif|jpg|pdf)$" /tmp/images.txt >/tmp/media.txt
 cd $startingDirectory
 # updates the masterMedia.txt file if it has already been created otherwise it creates it
 if [ -a ./masterMedia.txt ];then
