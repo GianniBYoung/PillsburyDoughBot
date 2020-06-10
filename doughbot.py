@@ -4,6 +4,7 @@ import time
 import praw
 import subprocess
 import sys
+import os
 import requests
 import configparser
 from selenium import webdriver
@@ -87,9 +88,10 @@ def doughbot():
         print("Usage: python3 doughbot.py <subreddit> [Directory of images] \n Directory of images must be provided on first run.")
         exit()
 
-
+    projectPath = os.path.dirname(os.path.realpath(__file__)) 
+    authfile = projectPath + "/auth.ini"
     config = configparser.ConfigParser()
-    config.read('auth.ini')
+    config.read(authfile)
     imgurClient = imgurAuthentication(config)
     redditClient = redditAuthentication(config)
 
@@ -99,10 +101,10 @@ def doughbot():
     if len(sys.argv) == 3 :
         subreddit = redditClient.subreddit(str(sys.argv[1]))
         print("The master record will be updated")
-        subprocess.call(["./directorylist.sh", str(sys.argv[2])])
+        subprocess.call([ projectPath + "/directorylist.sh", str(sys.argv[2])])
 
     #keeps track of what image should be posted
-    imagelogPath=Path('./imageLog.txt')
+    imagelogPath=Path(projectPath + '/imageLog.txt')
     if imagelogPath.is_file():
         imagelog = open(imagelogPath,'r')
         imageToPost = int(imagelog.readline())+1
@@ -114,8 +116,8 @@ def doughbot():
         imageToPost = 0
         imagelog.write(imageToPost)
     
-    masterList = open('./masterMedia.txt','r')
-    with open('./masterMedia.txt') as f:
+    masterList = open(projectPath + '/masterMedia.txt','r')
+    with open(projectPath + '/masterMedia.txt') as f:
         imagePaths = f.read().splitlines()
 
     #cleans up the title and provides the path to image to be posted
@@ -137,11 +139,7 @@ def doughbot():
     return
 
    #For scheduling task execution
-
-def job():
-    print("I'm working...")
-
-schedule.every(4).to(8).hours.do(doughbot)
+schedule.every(1).minutes.do(doughbot)
 while True:
     schedule.run_pending()
     time.sleep(1)
