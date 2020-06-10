@@ -94,14 +94,10 @@ def doughbot():
     config.read(authfile)
     imgurClient = imgurAuthentication(config)
     redditClient = redditAuthentication(config)
+    subreddit = redditClient.subreddit(str(sys.argv[1]))
 
     if len(sys.argv) == 2 :
         subreddit = redditClient.subreddit(str(sys.argv[1]))
-
-    if len(sys.argv) == 3 :
-        subreddit = redditClient.subreddit(str(sys.argv[1]))
-        print("The master record will be updated")
-        subprocess.call([ projectPath + "/directorylist.sh", str(sys.argv[2])])
 
     #keeps track of what image should be posted
     imagelogPath=Path(projectPath + '/imageLog.txt')
@@ -137,6 +133,11 @@ def doughbot():
     print("You can find the image here: {0}".format(image['link']))
     subreddit.submit(title = image_title, url = imageUrl)
     return
+
+
+if len(sys.argv) == 3 :
+    print("The master record will be updated")
+    subprocess.call([os.path.dirname(os.path.realpath(__file__)) + "/directorylist.sh", str(sys.argv[2])])
 
    #For scheduling task execution
 schedule.every(1).minutes.do(doughbot)
