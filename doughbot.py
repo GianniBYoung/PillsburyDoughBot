@@ -52,8 +52,12 @@ def upload_image(client, title, image_path):
              'title': title,
              }
      print ('uploading image')
-     image = client.upload_from_path(image_path, config, anon=False)
-     return image
+     try:
+         image = client.upload_from_path(image_path, config, anon=False)
+         return image
+     except:
+         print("File type cannot be uploaded to Imgur. We'll get em next time.")
+         return -1
 
 
 
@@ -125,8 +129,6 @@ def doughbot():
         imagelog = open(imagelogPath,'r')
         imageToPost = int(imagelog.readline())+1
         imagelog.close()
-        imagelog = open(imagelogPath,'w')
-        imagelog.write(str(imageToPost))
     else:
         imagelog = open(imagelogPath,'w')
         imageToPost = 0
@@ -150,10 +152,17 @@ def doughbot():
     imagelog.close()
     imgurLogin(imgurClient, config)
     image = upload_image(imgurClient, image_title, image_path)
+
+    if image==-1:
+        return
+
     imageUrl = format(image['link'])
     print("You can find the image here: {0}".format(image['link']))
     post = subreddit.submit(title = image_title, url = imageUrl)
     cross_post(image_title, cross_subreddit, post)
+    imagelog = open(imagelogPath,'w')
+    imagelog.write(str(imageToPost))
+    imagelog.close()
     return
 
 
