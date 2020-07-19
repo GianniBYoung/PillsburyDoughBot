@@ -1,4 +1,5 @@
 from pathlib import Path
+import keyboard
 import schedule
 import time
 import praw
@@ -54,6 +55,25 @@ def upload_image(client, title, image_path):
      image = client.upload_from_path(image_path, config, anon=False)
      return image
 
+
+
+def cross_post(image_title, cross_subreddit, post):
+    refrainList = open('refrainlist.txt', 'r')
+    
+    while True:
+        line = refrainList.readline().strip()
+        if not line:
+            break
+        elif image_title[0].strip() == line:
+            return -1
+
+
+    try:
+        post.crosspost(subreddit=cross_subreddit, title=image_title,nsfw=True)
+    except:
+        print("Error Cross Posting. Make Sure You Are Subscribed To The Subreddit.")
+    print(post.id)
+    print(cross_subreddit)
 
 
 
@@ -119,6 +139,7 @@ def doughbot():
     #cleans up the title and provides the path to image to be posted
     image_path = imagePaths[imageToPost].strip()
     image_title = imagePaths[imageToPost].split("/")
+    cross_subreddit = image_title[4]
     image_title = image_title[len(image_title)-1]
     image_title = image_title.replace("_"," ")
     image_title = image_title.replace("-"," ")
@@ -131,16 +152,17 @@ def doughbot():
     image = upload_image(imgurClient, image_title, image_path)
     imageUrl = format(image['link'])
     print("You can find the image here: {0}".format(image['link']))
-    subreddit.submit(title = image_title, url = imageUrl)
+    post = subreddit.submit(title = image_title, url = imageUrl)
+    cross_post(image_title, cross_subreddit, post)
     return
 
 
 if len(sys.argv) == 3 :
     print("The master record will be updated")
     subprocess.call([os.path.dirname(os.path.realpath(__file__)) + "/directorylist.sh", str(sys.argv[2])])
-
+doughbot()
    #For scheduling task execution
-schedule.every(1).minutes.do(doughbot)
+schedule.every(1).hours.do(doughbot)
 while True:
     schedule.run_pending()
     time.sleep(1)
