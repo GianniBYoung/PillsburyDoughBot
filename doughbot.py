@@ -62,8 +62,10 @@ def upload_image(client, title, image_path):
 
 
 def cross_post(image_title, cross_subreddit, post):
+
+    crossPostable = True
+#searches for artists that are meant to be excluded
     refrainList = open('refrainlist.txt', 'r')
-    
     while True:
         line = refrainList.readline().strip()
         if not line:
@@ -71,12 +73,30 @@ def cross_post(image_title, cross_subreddit, post):
         elif image_title[0].strip() == line:
             return -1
 
+    refrainList.close()
 
-    try:
-        post.crosspost(subreddit=cross_subreddit, title=image_title,nsfw=True)
-    except:
-        print("Error Cross Posting. Make Sure You Are Subscribed To The Subreddit.")
-    print(post.id)
+#checks if the given subreddit allows crossposts
+    noCrossPost = open('noCrossPost.txt', 'r')
+    while True:
+        line = noCrossPost.readline().strip()
+        if not line:
+            break
+        elif cross_subreddit == line:
+           crossPostable = False 
+
+    noCrossPost.close()
+
+#attempts to crosspost and if the request is blocked noCrossPost.txt is updated
+    if crossPostable:
+        try:
+            post.crosspost(subreddit=cross_subreddit, title=image_title,nsfw=True)
+        except:
+            print("Error Cross Posting. Make Sure You Are Subscribed To The Subredditand that crossposting is allowed.")
+            with open('noCrossPost.txt', 'w') as file:
+                file.write(cross_subreddit)
+    else:
+        print("r/" + cross_subreddit + " cannot be posted to")
+        return
     print(cross_subreddit)
 
 
