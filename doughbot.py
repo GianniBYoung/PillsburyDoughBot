@@ -51,9 +51,10 @@ def upload_image(client, title, image_path):
      config = {
              'title': title,
              }
-     print ('uploading image')
+     print ('Uploading image')
      try:
          image = client.upload_from_path(image_path, config, anon=False)
+         print("Image uploaded successfully!")
          return image
      except:
          print("File type cannot be uploaded to Imgur. We'll get em next time.")
@@ -91,11 +92,11 @@ def cross_post(image_title, cross_subreddit, post):
         try:
             post.crosspost(subreddit=cross_subreddit, title=image_title,nsfw=True)
         except:
-            print("Error Cross Posting. Make Sure You Are Subscribed To The Subredditand that crossposting is allowed.")
+            print("Error cross posting. make sure you are subscribed to the subreddit and that crossposting is allowed.")
             with open('noCrossPost.txt', 'w') as file:
                 file.write(cross_subreddit)
     else:
-        print("r/" + cross_subreddit + " cannot be posted to")
+        print("r/" + cross_subreddit + " cannot be posted to or is on the refrain list.")
         return
     print(cross_subreddit)
 
@@ -170,6 +171,11 @@ def doughbot():
     
     masterList.close()
     imagelog.close()
+
+    imagelog = open(imagelogPath,'w')
+    imagelog.write(str(imageToPost))
+    imagelog.close()
+
     imgurLogin(imgurClient, config)
     image = upload_image(imgurClient, image_title, image_path)
 
@@ -180,18 +186,17 @@ def doughbot():
     print("You can find the image here: {0}".format(image['link']))
     post = subreddit.submit(title = image_title, url = imageUrl)
     cross_post(image_title, cross_subreddit, post)
-    imagelog = open(imagelogPath,'w')
-    imagelog.write(str(imageToPost))
-    imagelog.close()
+    submission = redditClient.submission(id=str(post.id))
+    submission.reply("This image was originally obtained from ["+cross_subreddit+"]("+"https://www.reddit.com/r/" + cross_subreddit+")")
     return
 
 
 if len(sys.argv) == 3 :
-    print("The master record will be updated")
+    print("The master record will be updated.")
     subprocess.call([os.path.dirname(os.path.realpath(__file__)) + "/directorylist.sh", str(sys.argv[2])])
 doughbot()
    #For scheduling task execution
-schedule.every(1).hours.do(doughbot)
+schedule.every(30).minutes.do(doughbot)
 while True:
     schedule.run_pending()
     time.sleep(1)
