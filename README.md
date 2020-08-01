@@ -5,4 +5,6 @@ Upon first usage run the setup.py and provide the path to directory containing i
 
 Usage: python3 doughbot.py <subreddit> [PATH to directory containing images]
 
-providing the path to directory containing images will update the masterlist.txt
+*providing the path to directory containing images will update the masterlist.txt
+
+*Note make sure to escape special characters in the auth.ini with a percent sign. Example: 1234% -> 12345%%
