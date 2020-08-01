@@ -2,67 +2,58 @@ from pathlib import Path
 import keyboard
 import schedule
 import time
+import datetime
 import praw
 import subprocess
 import sys
 import os
 import requests
 import configparser
-from selenium import webdriver
-from selenium.webdriver.common.keys import Keys
-from selenium.common.exceptions import TimeoutException
-from selenium.webdriver.support.ui import WebDriverWait
-from selenium.webdriver.support import expected_conditions as EC
-from selenium.webdriver.common.by import By
-from imgurpython import ImgurClient
-
-#this is for selenium (autologin)
-def imgurLogin(imgur, config):
-    imgur_username = config.get('credentials', 'imgur_username')
-    imgur_password = config.get('credentials', 'imgur_password')
-    authorization_url = imgur.get_auth_url('pin')
-    driver = webdriver.Firefox()
-    driver.get(authorization_url)
-
-    username = driver.find_element_by_xpath('//*[@id="username"]')
-    password = driver.find_element_by_xpath('//*[@id="password"]')
-    username.clear()
-    username.send_keys(imgur_username)
-    password.send_keys(imgur_password)
-    driver.find_element_by_name("allow").click()
 
 
-    timeout = 5
-    try:
-        element_present = EC.presence_of_element_located((By.ID, 'pin'))
-        WebDriverWait(driver, timeout).until(element_present)
-        pin_element = driver.find_element_by_id('pin')
-        pin = pin_element.get_attribute("value")
-    except TimeoutException:
-        print("Timed out waiting for page to load")
-    driver.close()
-    credentials = imgur.authorize(pin,'pin')
-    imgur.set_user_auth(credentials['access_token'], credentials['refresh_token'])
+def reddit_authentication(config):
+    config.read('auth.ini')
+    redditClientId = config.get('credentials', 'reddit_Client_Id')
+    redditClientSecret = config.get('credentials', 'reddit_Client_Secret')
+    redditUsername = config.get('credentials', 'reddit_Username')
+    redditPassword = config.get('credentials', 'reddit_Password')
+    return praw.Reddit(client_id = redditClientId,
+		         client_secret = redditClientSecret,
+		         username = redditUsername,
+		         password = redditPassword,
+		         user_agent = 'PillsburyDoughBot')
 
 
 
-#uploads an image or a gif to imgur
-def upload_image(client, title, image_path):
-     config = {
-             'title': title,
-             }
-     print ('Uploading image')
-     try:
-         image = client.upload_from_path(image_path, config, anon=False)
-         print("Image uploaded successfully!")
-         return image
-     except:
-         print("File type cannot be uploaded to Imgur. We'll get em next time.")
-         return -1
+
+def upload_media(title, imagePath):
+    config = configparser.ConfigParser()
+    config.read('auth.ini')
+    cookie = config.get('credentials', 'imgur_cookie')
+    fileExtension = imagePath[-3:]
+
+    if fileExtension == 'mp4':
+        fileType = 'video'
+    else:
+        fileType = 'image'
+
+    url = "https://api.imgur.com/3/upload"
+    payload = {'title': title}
+    files = [
+      (fileType, open(imagePath,'rb')),
+      ('type', open(imagePath,'rb'))
+    ]
+    headers = {
+      'Cookie': cookie 
+    }
+
+    response = requests.request("POST", url, headers=headers, data = payload, files = files)
+    return response
 
 
 
-def cross_post(image_title, cross_subreddit, post):
+
+def cross_post(imageTitle, crossSubreddit, post):
 
     crossPostable = True
 #searches for artists that are meant to be excluded
@@ -71,7 +62,7 @@ def cross_post(image_title, cross_subreddit, post):
         line = refrainList.readline().strip()
         if not line:
             break
-        elif image_title[0].strip() == line:
+        elif imageTitle[0].strip() == line:
             return -1
 
     refrainList.close()
@@ -82,7 +73,7 @@ def cross_post(image_title, cross_subreddit, post):
         line = noCrossPost.readline().strip()
         if not line:
             break
-        elif cross_subreddit == line:
+        elif crossSubreddit == line:
            crossPostable = False 
 
     noCrossPost.close()
@@ -90,40 +81,15 @@ def cross_post(image_title, cross_subreddit, post):
 #attempts to crosspost and if the request is blocked noCrossPost.txt is updated
     if crossPostable:
         try:
-            post.crosspost(subreddit=cross_subreddit, title=image_title,nsfw=True)
+            post.crosspost(subreddit=crossSubreddit, title=imageTitle,nsfw=True)
         except:
             print("Error cross posting. make sure you are subscribed to the subreddit and that crossposting is allowed.")
             with open('noCrossPost.txt', 'w') as file:
-                file.write(cross_subreddit)
+                file.write(crossSubreddit)
     else:
-        print("r/" + cross_subreddit + " cannot be posted to or is on the refrain list.")
+        print("r/" + crossSubreddit + " cannot be posted to or is on the refrain list.")
         return
-    print(cross_subreddit)
-
-
-
-def redditAuthentication(config):
-    config.read('auth.ini')
-    reddit_client_Id = config.get('credentials', 'reddit_client_id')
-    reddit_client_secret = config.get('credentials', 'reddit_client_secret')
-    reddit_username = config.get('credentials', 'reddit_username')
-    reddit_password = config.get('credentials', 'reddit_password')
-    return praw.Reddit(client_id = reddit_client_Id,
-		         client_secret = reddit_client_secret,
-		         username = reddit_username,
-		         password = reddit_password,
-		         user_agent = 'PillsburyDoughBot')
-
-
-
-
-def imgurAuthentication(config):
-    config.read('auth.ini')
-    imgur_client_Id = config.get('credentials', 'imgur_client_id')
-    imgur_client_secret = config.get('credentials', 'imgur_client_secret')
-    imgur_username = config.get('credentials', 'imgur_username')
-    imgur_password = config.get('credentials', 'imgur_password')
-    return ImgurClient(client_id = imgur_client_Id,client_secret = imgur_client_secret)
+    print(crossSubreddit)
 
 
 
@@ -134,60 +100,59 @@ def doughbot():
         exit()
 
     projectPath = os.path.dirname(os.path.realpath(__file__)) 
-    authfile = projectPath + "/auth.ini"
+    authFile = projectPath + "/auth.ini"
     config = configparser.ConfigParser()
-    config.read(authfile)
-    imgurClient = imgurAuthentication(config)
-    redditClient = redditAuthentication(config)
+    config.read(authFile)
+    redditClient = reddit_authentication(config)
     subreddit = redditClient.subreddit(str(sys.argv[1]))
 
     if len(sys.argv) == 2 :
         subreddit = redditClient.subreddit(str(sys.argv[1]))
 
     #keeps track of what image should be posted
-    imagelogPath=Path(projectPath + '/imageLog.txt')
-    if imagelogPath.is_file():
-        imagelog = open(imagelogPath,'r')
-        imageToPost = int(imagelog.readline())+1
-        imagelog.close()
+    imageLogPath = Path(projectPath + '/imageLog.txt')
+    if imageLogPath.is_file():
+        imageLog = open(imageLogPath,'r')
+        imageToPost = int(imageLog.readline()) + 1
+        imageLog.close()
     else:
-        imagelog = open(imagelogPath,'w')
+        imageLog = open(imageLogPath,'w')
         imageToPost = 0
-        imagelog.write(imageToPost)
+        imageLog.write(imageToPost)
     
     masterList = open(projectPath + '/masterMedia.txt','r')
     with open(projectPath + '/masterMedia.txt') as f:
         imagePaths = f.read().splitlines()
 
     #cleans up the title and provides the path to image to be posted
-    image_path = imagePaths[imageToPost].strip()
-    image_title = imagePaths[imageToPost].split("/")
-    cross_subreddit = image_title[4]
-    image_title = image_title[len(image_title)-1]
-    image_title = image_title.replace("_"," ")
-    image_title = image_title.replace("-"," ")
-    image_title = image_title.replace("."," ")
-    image_title = image_title.rsplit(' ', 2)[0]
+    imagePath = imagePaths[imageToPost].strip()
+    imageTitle = imagePaths[imageToPost].split("/")
+    crossSubreddit = imageTitle[4]
+    imageTitle = imageTitle[len(imageTitle) - 1]
+    imageTitle = imageTitle.replace("_", " ")
+    imageTitle = imageTitle.replace("-", " ")
+    imageTitle = imageTitle.replace(".", " ")
+    imageTitle = imageTitle.rsplit(' ', 2)[0]
     
     masterList.close()
-    imagelog.close()
+    imageLog.close()
 
-    imagelog = open(imagelogPath,'w')
-    imagelog.write(str(imageToPost))
-    imagelog.close()
+    imageLog = open(imageLogPath, 'w')
+    imageLog.write(str(imageToPost))
+    imageLog.close()
 
-    imgurLogin(imgurClient, config)
-    image = upload_image(imgurClient, image_title, image_path)
+    #json response containing image info
+    imageResponse = upload_media(imageTitle, imagePath).json()["data"]
+    imageUrl = imageResponse["link"] 
 
-    if image==-1:
-        return
 
-    imageUrl = format(image['link'])
-    print("You can find the image here: {0}".format(image['link']))
-    post = subreddit.submit(title = image_title, url = imageUrl)
-    cross_post(image_title, cross_subreddit, post)
-    submission = redditClient.submission(id=str(post.id))
-    submission.reply("This image was originally obtained from ["+cross_subreddit+"]("+"https://www.reddit.com/r/" + cross_subreddit+")")
+    post = subreddit.submit(title = imageTitle, url = imageUrl)
+    cross_post(imageTitle, crossSubreddit, post)
+    submission = redditClient.submission(id = str(post.id))
+    submission.reply("This image was originally obtained from [" + crossSubreddit + "](" + "https://www.reddit.com/r/" + crossSubreddit + ")")
+    now = datetime.datetime.now()
+    print(now.strftime('Posted at: %I:%M'))
+    print("Image Link: " + imageUrl)
     return
 
 
@@ -195,6 +160,7 @@ if len(sys.argv) == 3 :
     print("The master record will be updated.")
     subprocess.call([os.path.dirname(os.path.realpath(__file__)) + "/directorylist.sh", str(sys.argv[2])])
 doughbot()
+
    #For scheduling task execution
 schedule.every(30).minutes.do(doughbot)
 while True:
