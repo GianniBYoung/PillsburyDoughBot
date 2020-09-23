@@ -106,8 +106,6 @@ def doughbot():
     redditClient = reddit_authentication(config)
     subreddit = redditClient.subreddit(str(sys.argv[1]))
 
-    if len(sys.argv) == 2 :
-        subreddit = redditClient.subreddit(str(sys.argv[1]))
 
     #keeps track of what image should be posted
     imageLogPath = Path(projectPath + '/imageLog.txt')
@@ -142,14 +140,21 @@ def doughbot():
     imageLog.close()
 
     #json response containing image info
-    imageResponse = upload_media(imageTitle, imagePath).json()["data"]
-    imageUrl = imageResponse["link"] 
+    imageResponse = upload_media(imageTitle, imagePath).json()
+    statusCode = imageResponse["status"]
+    if statusCode != 200:
+        return -1
+
+    imageUrl = imageResponse["data"]["link"] 
 
 
     post = subreddit.submit(title = imageTitle, url = imageUrl)
-    cross_post(imageTitle, crossSubreddit, post)
-    submission = redditClient.submission(id = str(post.id))
-    submission.reply("This image was originally obtained from [" + crossSubreddit + "](" + "https://www.reddit.com/r/" + crossSubreddit + ")")
+    #cross_post(imageTitle, crossSubreddit, post)
+    try:
+        submission = redditClient.submission(id = str(post.id))
+        submission.reply("This image was originally obtained from [" + crossSubreddit + "](" + "https://www.reddit.com/r/" + crossSubreddit + ")")
+    except:
+        return -1
     now = datetime.datetime.now()
     print(now.strftime('Posted at: %I:%M'))
     print("Image Link: " + imageUrl)
