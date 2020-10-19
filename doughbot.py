@@ -11,8 +11,9 @@ import requests
 import configparser
 
 
-def reddit_authentication(config):
-    config.read('auth.ini')
+def reddit_authentication(config, projectPath):
+    auth = projectPath + '/auth.ini'
+    config.read ('credentials')
     redditClientId = config.get('credentials', 'reddit_Client_Id')
     redditClientSecret = config.get('credentials', 'reddit_Client_Secret')
     redditUsername = config.get('credentials', 'reddit_Username')
@@ -26,9 +27,10 @@ def reddit_authentication(config):
 
 
 
-def upload_media(title, imagePath):
+def upload_media(title, imagePath, projectPath):
+    auth = projectPath + '/auth.ini'
     config = configparser.ConfigParser()
-    config.read('auth.ini')
+    config.read(auth)
     cookie = config.get('credentials', 'imgur_cookie')
     fileExtension = imagePath[-3:]
 
@@ -103,7 +105,7 @@ def doughbot():
     authFile = projectPath + "/auth.ini"
     config = configparser.ConfigParser()
     config.read(authFile)
-    redditClient = reddit_authentication(config)
+    redditClient = reddit_authentication(config, projectPath)
     subreddit = redditClient.subreddit(str(sys.argv[1]))
 
 
@@ -140,7 +142,7 @@ def doughbot():
     imageLog.close()
 
     #json response containing image info
-    imageResponse = upload_media(imageTitle, imagePath).json()
+    imageResponse = upload_media(imageTitle, imagePath,projectPath).json()
     statusCode = imageResponse["status"]
     if statusCode != 200:
         return -1
@@ -167,7 +169,7 @@ if len(sys.argv) == 3 :
 doughbot()
 
    #For scheduling task execution
-schedule.every(30).minutes.do(doughbot)
+schedule.every(25).minutes.do(doughbot)
 while True:
     schedule.run_pending()
     time.sleep(1)
