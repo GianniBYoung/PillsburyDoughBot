@@ -129,6 +129,8 @@ def doughbot():
     imageTitle = imagePaths[imageToPost].split("/")
     crossSubreddit = imageTitle[4]
     imageTitle = imageTitle[len(imageTitle) - 1]
+    originalPoster = imageTitle.split("_")
+    originalPoster = originalPoster[0]
     imageTitle = imageTitle.replace("_", " ")
     imageTitle = imageTitle.replace("-", " ")
     imageTitle = imageTitle.replace(".", " ")
@@ -154,7 +156,9 @@ def doughbot():
     #cross_post(imageTitle, crossSubreddit, post)
     try:
         submission = redditClient.submission(id = str(post.id))
-        submission.reply("This image was originally obtained from [" + crossSubreddit + "](" + "https://www.reddit.com/r/" + crossSubreddit + ")")
+        submission.reply("This image was originally posted by [" + originalPoster + "](" + "https://www.reddit.com/u/" + originalPoster + ") obtained from [" + crossSubreddit + "](" + "https://www.reddit.com/r/" + crossSubreddit + ")." )
+
+        submission.reply("Note, if the link to the user's page does not work it is likely because their username contains underscores. The original posters handle is the first sequence in the title. You can attempt to find them by following a link in the form of: http://www.reddit.com/u/red_sonja")
     except:
         return -1
     now = datetime.datetime.now()
