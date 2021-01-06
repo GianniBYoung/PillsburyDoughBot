@@ -2,3 +2,4 @@ auth.ini
 config.py
 *.txt
 *.jpg
+*.db
