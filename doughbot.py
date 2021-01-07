@@ -66,8 +66,22 @@ def insert_subreddit(name):
     con.commit()
 
 
+# /media/unit/ripme/AbsoluteUnits/FimonFogus_Hope_this_hasn_t_been_posted_before__cigdl2.jpg
+# returns a dictionary containing subreddit, author, title, postid
 def deconstruct_path(mediaPath):
-    combinedPath = basePath + mediaPath
+    subreddit = mediaPath.split("/")[4]
+    
+    post = mediaPath.split("/")[5].split("_")
+
+    author = post[0]
+
+    postId = post[len(post)-1].split('.')[0]
+
+    title = post[1]
+    title = ' '.join(post[1:len(post)-2])
+    
+    submission = {"subreddit":subreddit, "author":author, "title":title, "postId": postId}
+    return submission 
 
 
 #TODO grab fileExtension
