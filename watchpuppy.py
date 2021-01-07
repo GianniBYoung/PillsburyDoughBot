@@ -1,11 +1,11 @@
 #derived from watchpuppy by Davide Mastromatteo
 #http://thepythoncorner.com/dev/how-to-create-a-watchdog-in-python-to-look-for-filesystem-changes/
 import time
-from config import  pathToPosts
-from watchdog.observers import Observer
+from config import basePath, pathToPosts
+from watchdog.observers import Observer,polling
 from watchdog.events import PatternMatchingEventHandler
 
-#PATHTOBEOBSERVED = basePath
+PATHTOBEOBSERVED = basePath
 
 def on_created(event):
     postsTxt = open(pathToPosts, 'a')
@@ -32,7 +32,8 @@ if __name__ == "__main__":
     path = PATHTOBEOBSERVED
     go_recursively = True
 
-    my_observer = Observer()
+    #my_observer = Observer()
+    my_observer = polling.PollingObserver()
     my_observer.schedule(my_event_handler, path, recursive=go_recursively)
 
     my_observer.start()
