@@ -6,7 +6,7 @@ import praw
 import requests
 from config import *
 
-
+# returns a Reddit client with users details
 def reddit_authentication():
     return praw.Reddit(client_id=redditClientid,
                        client_secret=redditClientsecret,
@@ -32,7 +32,7 @@ def create_database():
                    )
     con.commit()
 
-
+# inserts a single user to the db
 def insert_user(name="Unknown"):
     con = sqlite3.connect('main.db')
     cursor = con.cursor()
@@ -43,6 +43,7 @@ def insert_user(name="Unknown"):
     con.commit()
 
 
+# inserts a single post to the db
 def insert_post(authorKey, mediaPath, title="Unknown"):
     con = sqlite3.connect('main.db')
     cursor = con.cursor()
@@ -52,7 +53,7 @@ def insert_post(authorKey, mediaPath, title="Unknown"):
            VALUES (?,?,?)''', (title, authorKey, mediaPath))
     con.commit()
 
-
+# inserts a single subreddit to the db
 def insert_subreddit(name):
     con = sqlite3.connect('main.db')
     cursor = con.cursor()
@@ -75,25 +76,25 @@ def deconstruct_path(mediaPath):
         "subreddit": subreddit,
         "author": author,
         "title": title,
-        "postId": postId
+        "postId": postId,
+        "path": mediaPath
     }
     return submission
 
 
 #TODO grab fileExtension
 #can use ends with
-def upload_to_imgur(title, imagePath):
-    fileExtension = "the file ext"
-    if fileExtension == 'mp4':
+def upload_to_imgur(detailsDict):
+    if detailsDict["mediaPath"].endswith(".mp4"):
         fileType = 'video'
     else:
         fileType = 'image'
 
     try:
         url = "https://api.imgur.com/3/upload"
-        payload = {'title': title}
-        files = [(fileType, open(imagePath, 'rb')),
-                 ('type', open(imagePath, 'rb'))]
+        payload = {'title': detailsDict["title"]}
+        files = [(fileType, open(detailsDict["path"], 'rb')),
+                 ('type', open(detailsDict["path"], 'rb'))]
         headers = {'Cookie': imgurCookie}
 
         response = requests.request("POST",
@@ -101,11 +102,29 @@ def upload_to_imgur(title, imagePath):
                                     headers=headers,
                                     data=payload,
                                     files=files)
-        return response
+
+        imgurUrl = response.json() 
+        detailsDict["imgurLink"] = imgurUrl["data"]["link"]
+        return detailsDict
     except:
         print("Unable to upload to imgur")
 
+# uploads media to specified subreddit and returns postId
+def upload_to_reddit(detailsDict, subreddit):
+    redditClient = reddit_authenticate() 
+    subreddit = redditClient.subreddit(subreddit)
+    redditClient.validate_on_submit = True
 
+    redditPost = subreddit.submit(title = detailsDict["title"], url = detailsDict["imgurLink"])
+    return str(post.id)
+
+
+def comment_on_post(postId, content):
+    submission = redditClient.submission(id=str(post.id))
+    submission.reply(content)
+
+# obtains absolute paths from user specified basePath variable and
+# outputs them to user specified pathToPosts variable
 def get_media_paths():
     postsTxt = open(pathToPosts, 'w')
     for subdir, dirs, files in os.walk(basePath):
@@ -119,7 +138,7 @@ def get_media_paths():
 
     postsTxt.close()
 
-
+# Translates paths in posts.txt to a list
 def posts_to_list():
     file = open(pathToPosts)
     lines = file.read().split('\n')
@@ -127,7 +146,8 @@ def posts_to_list():
     return lines
 
 
-#for populating, store author and the primary key in a dictionary to make creating subreddits easier
+# for populating, store author and the primary key in a dictionary to make creating subreddits easier
+# adds multiple subreddits to db
 def populate_subreddits():
     posts = posts_to_list()
     for path in posts:
