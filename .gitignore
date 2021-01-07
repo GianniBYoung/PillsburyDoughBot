@@ -1,4 +1,5 @@
 auth.ini
+posts.txt
 config.py
 *.txt
 *.jpg
