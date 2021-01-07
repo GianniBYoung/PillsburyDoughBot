@@ -6,9 +6,6 @@ import praw
 import requests
 from config import *
 
-# /media/unit/ripme/AbsoluteUnits
-# /media/unit/ripme/AbsoluteUnits/FimonFogus_Hope_this_hasn_t_been_posted_before__cigdl2.jpg
-
 
 def reddit_authentication():
     return praw.Reddit(client_id=redditClientid,
@@ -66,22 +63,21 @@ def insert_subreddit(name):
     con.commit()
 
 
-# /media/unit/ripme/AbsoluteUnits/FimonFogus_Hope_this_hasn_t_been_posted_before__cigdl2.jpg
 # returns a dictionary containing subreddit, author, title, postid
 def deconstruct_path(mediaPath):
     subreddit = mediaPath.split("/")[4]
-    
     post = mediaPath.split("/")[5].split("_")
-
     author = post[0]
-
-    postId = post[len(post)-1].split('.')[0]
-
+    postId = post[len(post) - 1].split('.')[0]
     title = post[1]
-    title = ' '.join(post[1:len(post)-2])
-    
-    submission = {"subreddit":subreddit, "author":author, "title":title, "postId": postId}
-    return submission 
+    title = ' '.join(post[1:len(post) - 2])
+    submission = {
+        "subreddit": subreddit,
+        "author": author,
+        "title": title,
+        "postId": postId
+    }
+    return submission
 
 
 #TODO grab fileExtension
@@ -124,9 +120,20 @@ def get_media_paths():
     postsTxt.close()
 
 
+def posts_to_list():
+    file = open(pathToPosts)
+    lines = file.read().split('\n')
+    file.close()
+    return lines
 
-#create_database()
-#insert_user("Gianni")
-#insert_post(1, "ths/is/a/path")
-#insert_subredditt("AbsoluteUnits")
+
+#for populating, store author and the primary key in a dictionary to make creating subreddits easier
+def populate_subreddits():
+    posts = posts_to_list()
+    for path in posts:
+        deconstruction = deconstruct_path(path)
+        print(deconstruction["subreddit"])
+        #insert_subreddit(deconstruction["subreddit"])
+
 get_media_paths()
+populate_subreddits()
