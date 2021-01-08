@@ -220,7 +220,7 @@ def post_from_database(subreddit):
         print("Error encountered while posting from database.")
 
 def personal_comment(detailsDict):
-    submission = redditClient.submission(id=str(post.id))
+    submission = redditClient.submission(id=detailsDict["postId"]))
     submission.reply("This image was originally posted by [" + detailsDict["author"] + "](" +
                      "https://www.reddit.com/u/" + detailsDict["author"] +
                      ") obtained from [" + detailsDict["subreddit"] + "](" +
