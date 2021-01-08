@@ -5,7 +5,6 @@ import praw
 import requests
 from config import *
 
-
 # returns a Reddit client with users details
 def reddit_authentication():
     return praw.Reddit(client_id=redditClientid,
@@ -14,7 +13,7 @@ def reddit_authentication():
                        password=redditPassword,
                        user_agent='PillsburyDoughBot')
 
-
+# can add a 'posted' boolean to Posts
 def create_database():
     con = sqlite3.connect('main.db')
     con.execute("PRAGMA foreign_keys = on")
@@ -25,21 +24,34 @@ def create_database():
          (userId INTEGER NOT NULL PRIMARY KEY, name TEXT NOT NULL UNIQUE, allowedToPost INTEGER)"
                    )
 
-    # creates Posts table
-    cursor.execute("CREATE TABLE IF NOT EXISTS Posts \
-         (id INTEGER NOT NULL PRIMARY KEY, title text NOT NULL, author, mediaPath TEXT, \
-         FOREIGN KEY (author) REFERENCES Users(userId));")
-
     # creates Subreddits table
     cursor.execute("CREATE TABLE IF NOT EXISTS Subreddits \
-         (id INTEGER NOT NULL PRIMARY KEY, name TEXT NOT NULL UNIQUE, allowsCrossPosts INTEGER);"
+         (subredditId INTEGER NOT NULL PRIMARY KEY, \
+         name TEXT NOT NULL UNIQUE, allowsCrossPosts INTEGER);"
                    )
+
+    # creates Posts table
+    cursor.execute("CREATE TABLE IF NOT EXISTS Posts \
+         (id INTEGER NOT NULL PRIMARY KEY, title TEXT NOT NULL, author INTEGER NOT NULL, mediaPath TEXT, subreddit INTEGER NOT NULL, \
+         FOREIGN KEY (author) REFERENCES Users(userId),\
+         FOREIGN KEY (subreddit) REFERENCES Subreddits(id));")
+
     con.commit()
+
+def query_database(query):
+    con = sqlite3.connect('main.db')
+    con.execute("PRAGMA foreign_keys = on")
+    cursor = con.cursor()
+
+    cursor.execute(query)
+    con.commit()
+    return cursor.fetchall()
 
 
 # inserts a single user to the db
 def insert_user(name):
     con = sqlite3.connect('main.db')
+    con.execute("PRAGMA foreign_keys = on")
     cursor = con.cursor()
 
     cursor.execute(
@@ -49,13 +61,13 @@ def insert_user(name):
 
 
 # inserts a single post to the db
-def insert_post(authorKey, mediaPath, title="Unknown"):
+def insert_post(authorKey, subredditPrimaryKey, mediaPath, title = "Unknown"):
     con = sqlite3.connect('main.db')
     cursor = con.cursor()
 
     cursor.execute(
-        '''INSERT OR IGNORE INTO Posts(title, author, mediaPath) \
-           VALUES (?,?,?)''', (title, authorKey, mediaPath))
+        '''INSERT OR IGNORE INTO Posts(title, author, mediaPath, subreddit) \
+           VALUES (?,?,?,?)''', (title, authorKey, mediaPath, subredditPrimaryKey))
     con.commit()
 
 
@@ -68,6 +80,20 @@ def insert_subreddit(name):
         '''INSERT OR IGNORE INTO Subreddits(name, allowsCrossPosts) \
            VALUES (?,?)''', (name, 1))
     con.commit()
+
+# inserts a user, subreddit, and post
+def insert_full_entry(detailsDict):
+    insert_user(detailsDict["author"])
+
+    authorPrimaryKey = query_database('''SELECT userId FROM Users WHERE name = '''\
+            + '"' + detailsDict["author"] + '"')[0][0]
+
+    insert_subreddit(detailsDict["subreddit"])
+    subredditPrimaryKey = query_database('''SELECT subredditId FROM Subreddits WHERE\
+            name = ''' + '"' + detailsDict["subreddit"] + '"')[0][0]
+
+    insert_post(authorPrimaryKey, subredditPrimaryKey,
+            detailsDict["path"], title = detailsDict["title"] )
 
 
 # returns a dictionary containing subreddit, author, title, postid
@@ -90,7 +116,6 @@ def deconstruct_path(mediaPath):
     return submission
 
 
-#TODO grab fileExtension
 def upload_to_imgur(detailsDict):
     if detailsDict["path"].endswith(".mp4"):
         fileType = 'video'
@@ -156,16 +181,19 @@ def posts_to_list():
     file = open(pathToPosts)
     lines = file.read().split('\n')
     file.close()
+    del lines[-1]
     return lines
 
 
 # adds multiple subreddits to db
 def populate_subreddits():
     posts = posts_to_list()
-    #removes the empty line at the end of a file
-    del posts[-1]
     for path in posts:
         deconstruction = deconstruct_path(path)
         insert_subreddit(deconstruction["subreddit"])
 
+create_database()
 
+posts = posts_to_list()
+for line in posts:
+    insert_full_entry(deconstruct_path(line))
