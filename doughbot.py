@@ -33,6 +33,7 @@ def create_database():
     # creates Posts table
     cursor.execute("CREATE TABLE IF NOT EXISTS Posts \
          (id INTEGER NOT NULL PRIMARY KEY, title TEXT NOT NULL, author INTEGER NOT NULL, mediaPath TEXT, subreddit INTEGER NOT NULL, \
+          posted INTEGER, \
          FOREIGN KEY (author) REFERENCES Users(userId),\
          FOREIGN KEY (subreddit) REFERENCES Subreddits(id));")
 
@@ -56,7 +57,7 @@ def insert_user(name):
 
     cursor.execute(
         '''INSERT OR IGNORE INTO Users(name, allowedToPost) \
-                      VALUES (?,?)''', (name, -1))
+                      VALUES (?,?)''', (name, 0))
     con.commit()
 
 
@@ -66,8 +67,8 @@ def insert_post(authorKey, subredditPrimaryKey, mediaPath, title = "Unknown"):
     cursor = con.cursor()
 
     cursor.execute(
-        '''INSERT OR IGNORE INTO Posts(title, author, mediaPath, subreddit) \
-           VALUES (?,?,?,?)''', (title, authorKey, mediaPath, subredditPrimaryKey))
+        '''INSERT OR IGNORE INTO Posts(title, author, mediaPath, subreddit, posted) \
+           VALUES (?,?,?,?,?)''', (title, authorKey, mediaPath, subredditPrimaryKey, 0))
     con.commit()
 
 
