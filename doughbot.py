@@ -1,4 +1,5 @@
 #using watchdog i can now store posts in the db if i would like to instead of a text file.
+#TODO bring in options
 import sqlite3
 import os
 import praw
@@ -29,7 +30,7 @@ def create_database():
     # creates Subreddits table
     cursor.execute("CREATE TABLE IF NOT EXISTS Subreddits \
          (subredditId INTEGER NOT NULL PRIMARY KEY, \
-         name TEXT NOT NULL UNIQUE, allowsCrossPosts INTEGER);")
+         name TEXT NOT NULL UNIQUE, allowsCrossPosts INTEGER, allowToPost INTEGER);")
 
     # creates Posts table
     cursor.execute("CREATE TABLE IF NOT EXISTS Posts \
@@ -81,8 +82,8 @@ def insert_subreddit(name):
     cursor = con.cursor()
 
     cursor.execute(
-        '''INSERT OR IGNORE INTO Subreddits(name, allowsCrossPosts) \
-           VALUES (?,?)''', (name, 1))
+        '''INSERT OR IGNORE INTO Subreddits(name, allowsCrossPosts, allowToPost) \
+           VALUES (?,?,?)''', (name, 1,1))
     con.commit()
 
 
@@ -102,6 +103,14 @@ def insert_full_entry(detailsDict):
                 subredditPrimaryKey,
                 detailsDict["path"],
                 title=detailsDict["title"])
+
+
+def disallow_post_to_subreddit(subreddit):
+    query_database('''UPDATE subreddits SET allowedToPost = 0 WHERE name = ''' + subreddit)
+
+
+def disallow_post_by_user(username):
+    query_database('''UPDATE Users SET allowedToPost = 0 WHERE name = ''' + username)
 
 
 # returns a dictionary containing subreddit, author, title, postid
@@ -220,16 +229,22 @@ def post_from_database(subreddit):
         print("Error encountered while posting from database.")
 
 def personal_comment(detailsDict):
-    submission = redditClient.submission(id=detailsDict["postId"]))
+    redditClient = reddit_authentication()
+    submission = redditClient.submission(id=detailsDict["postId"])
     submission.reply("This image was originally posted by [" + detailsDict["author"] + "](" +
                      "https://www.reddit.com/u/" + detailsDict["author"] +
                      ") obtained from [" + detailsDict["subreddit"] + "](" +
                      "https://www.reddit.com/r/" + detailsDict["subreddit"] + ").")
 
     submission.reply("Note, if the link to the user's page does not work it is likely because their username contains underscores. The original posters handle is the first sequence in the title. You can attempt to find them by following a link in the form of: http://www.reddit.com/u/red_sonja")
-                            
+
+
+
+
 create_database()
 
 #posts = posts_to_list()
 #for line in posts:
 #insert_full_entry(deconstruct_path(line))
+
+personal_comment(detailsDict)
