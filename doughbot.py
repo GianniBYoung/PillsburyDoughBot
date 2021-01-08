@@ -5,6 +5,7 @@ import praw
 import requests
 from config import *
 
+
 # returns a Reddit client with users details
 def reddit_authentication():
     return praw.Reddit(client_id=redditClientid,
@@ -12,6 +13,7 @@ def reddit_authentication():
                        username=redditUsername,
                        password=redditPassword,
                        user_agent='PillsburyDoughBot')
+
 
 # can add a 'posted' boolean to Posts
 def create_database():
@@ -27,8 +29,7 @@ def create_database():
     # creates Subreddits table
     cursor.execute("CREATE TABLE IF NOT EXISTS Subreddits \
          (subredditId INTEGER NOT NULL PRIMARY KEY, \
-         name TEXT NOT NULL UNIQUE, allowsCrossPosts INTEGER);"
-                   )
+         name TEXT NOT NULL UNIQUE, allowsCrossPosts INTEGER);")
 
     # creates Posts table
     cursor.execute("CREATE TABLE IF NOT EXISTS Posts \
@@ -38,6 +39,7 @@ def create_database():
          FOREIGN KEY (subreddit) REFERENCES Subreddits(id));")
 
     con.commit()
+
 
 def query_database(query):
     con = sqlite3.connect('main.db')
@@ -62,13 +64,14 @@ def insert_user(name):
 
 
 # inserts a single post to the db
-def insert_post(authorKey, subredditPrimaryKey, mediaPath, title = "Unknown"):
+def insert_post(authorKey, subredditPrimaryKey, mediaPath, title="Unknown"):
     con = sqlite3.connect('main.db')
     cursor = con.cursor()
 
     cursor.execute(
         '''INSERT OR IGNORE INTO Posts(title, author, mediaPath, subreddit, posted) \
-           VALUES (?,?,?,?,?)''', (title, authorKey, mediaPath, subredditPrimaryKey, 0))
+           VALUES (?,?,?,?,?)''',
+        (title, authorKey, mediaPath, subredditPrimaryKey, 0))
     con.commit()
 
 
@@ -82,6 +85,7 @@ def insert_subreddit(name):
            VALUES (?,?)''', (name, 1))
     con.commit()
 
+
 # inserts a user, subreddit, and post
 def insert_full_entry(detailsDict):
     insert_user(detailsDict["author"])
@@ -90,11 +94,14 @@ def insert_full_entry(detailsDict):
             + '"' + detailsDict["author"] + '"')[0][0]
 
     insert_subreddit(detailsDict["subreddit"])
-    subredditPrimaryKey = query_database('''SELECT subredditId FROM Subreddits WHERE\
+    subredditPrimaryKey = query_database(
+        '''SELECT subredditId FROM Subreddits WHERE\
             name = ''' + '"' + detailsDict["subreddit"] + '"')[0][0]
 
-    insert_post(authorPrimaryKey, subredditPrimaryKey,
-            detailsDict["path"], title = detailsDict["title"] )
+    insert_post(authorPrimaryKey,
+                subredditPrimaryKey,
+                detailsDict["path"],
+                title=detailsDict["title"])
 
 
 # returns a dictionary containing subreddit, author, title, postid
@@ -105,7 +112,7 @@ def deconstruct_path(mediaPath):
     postId = post[len(post) - 1].split('.')[0]
     title = post[1]
     #grabs title exluding subreddit and postId
-    title = title + ' '.join(post[1:len(post) - 2])
+    title = title + ' '.join(post[1:len(post) - 1])
     submission = {
         "subreddit": subreddit,
         "author": author,
@@ -114,6 +121,7 @@ def deconstruct_path(mediaPath):
         "path": mediaPath
     }
     print(submission["title"])
+    print(submission["path"])
     return submission
 
 
@@ -193,8 +201,26 @@ def populate_subreddits():
         deconstruction = deconstruct_path(path)
         insert_subreddit(deconstruction["subreddit"])
 
+
+# takes an unposted entry from the database, uploads to imgur and reddit, and returns postId
+def post_from_database(subreddit):
+    try:
+        unposted = query_database(
+            '''SELECT mediaPath FROM Posts WHERE posted = 0 ''')
+        detailsDict = deconstruct_path(unposted[0][0])
+        detailsDict = upload_to_imgur(detailsDict)
+        print("uploaded to imgur")
+        postId = upload_to_reddit(detailsDict, subreddit)
+        query_database('''UPDATE Posts SET posted = 1 WHERE mediaPath = ''' +
+                       '"' + detailsDict["path"] + '"')
+        print("Image has been posted.")
+        return postId
+    except:
+        print("Error encountered while posting from database.")
+
+
 create_database()
 
-posts = posts_to_list()
-for line in posts:
-    insert_full_entry(deconstruct_path(line))
+#posts = posts_to_list()
+#for line in posts:
+#insert_full_entry(deconstruct_path(line))
