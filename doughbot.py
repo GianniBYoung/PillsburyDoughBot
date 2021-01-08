@@ -1,10 +1,10 @@
 #using watchdog i can now store posts in the db if i would like to instead of a text file.
 import sqlite3
-import subprocess
 import os
 import praw
 import requests
 from config import *
+
 
 # returns a Reddit client with users details
 def reddit_authentication():
@@ -20,25 +20,30 @@ def create_database():
     con.execute("PRAGMA foreign_keys = on")
     cursor = con.cursor()
 
+    # creates Users table
     cursor.execute("CREATE TABLE IF NOT EXISTS Users \
-         (userId INTEGER PRIMARY KEY, name TEXT, allowedToPost INTEGER)")
+         (userId INTEGER NOT NULL PRIMARY KEY, name TEXT NOT NULL UNIQUE, allowedToPost INTEGER)"
+                   )
 
+    # creates Posts table
     cursor.execute("CREATE TABLE IF NOT EXISTS Posts \
-         (id INTEGER NOT NULL PRIMARY KEY, title text, author TEXT, mediaPath TEXT, \
+         (id INTEGER NOT NULL PRIMARY KEY, title text NOT NULL, author, mediaPath TEXT, \
          FOREIGN KEY (author) REFERENCES Users(userId));")
 
+    # creates Subreddits table
     cursor.execute("CREATE TABLE IF NOT EXISTS Subreddits \
-         (id INTEGER NOT NULL PRIMARY KEY, name TEXT, allowsCrossPosts INTEGER);"
+         (id INTEGER NOT NULL PRIMARY KEY, name TEXT NOT NULL UNIQUE, allowsCrossPosts INTEGER);"
                    )
     con.commit()
 
+
 # inserts a single user to the db
-def insert_user(name="Unknown"):
+def insert_user(name):
     con = sqlite3.connect('main.db')
     cursor = con.cursor()
 
     cursor.execute(
-        '''INSERT INTO Users(name, allowedToPost) \
+        '''INSERT OR IGNORE INTO Users(name, allowedToPost) \
                       VALUES (?,?)''', (name, -1))
     con.commit()
 
@@ -49,9 +54,10 @@ def insert_post(authorKey, mediaPath, title="Unknown"):
     cursor = con.cursor()
 
     cursor.execute(
-        '''INSERT INTO Posts(title, author, mediaPath) \
+        '''INSERT OR IGNORE INTO Posts(title, author, mediaPath) \
            VALUES (?,?,?)''', (title, authorKey, mediaPath))
     con.commit()
+
 
 # inserts a single subreddit to the db
 def insert_subreddit(name):
@@ -59,7 +65,7 @@ def insert_subreddit(name):
     cursor = con.cursor()
 
     cursor.execute(
-        '''INSERT INTO Subreddits(name, allowsCrossPosts) \
+        '''INSERT OR IGNORE INTO Subreddits(name, allowsCrossPosts) \
            VALUES (?,?)''', (name, 1))
     con.commit()
 
@@ -71,7 +77,8 @@ def deconstruct_path(mediaPath):
     author = post[0]
     postId = post[len(post) - 1].split('.')[0]
     title = post[1]
-    title = ' '.join(post[1:len(post) - 2])
+    #grabs title exluding subreddit and postId
+    title = title + ' '.join(post[1:len(post) - 2])
     submission = {
         "subreddit": subreddit,
         "author": author,
@@ -79,13 +86,13 @@ def deconstruct_path(mediaPath):
         "postId": postId,
         "path": mediaPath
     }
+    print(submission["title"])
     return submission
 
 
 #TODO grab fileExtension
-#can use ends with
 def upload_to_imgur(detailsDict):
-    if detailsDict["mediaPath"].endswith(".mp4"):
+    if detailsDict["path"].endswith(".mp4"):
         fileType = 'video'
     else:
         fileType = 'image'
@@ -103,25 +110,30 @@ def upload_to_imgur(detailsDict):
                                     data=payload,
                                     files=files)
 
-        imgurUrl = response.json() 
+        imgurUrl = response.json()
         detailsDict["imgurLink"] = imgurUrl["data"]["link"]
+        print(detailsDict["imgurLink"])
         return detailsDict
     except:
         print("Unable to upload to imgur")
 
+
 # uploads media to specified subreddit and returns postId
 def upload_to_reddit(detailsDict, subreddit):
-    redditClient = reddit_authenticate() 
+    redditClient = reddit_authentication()
     subreddit = redditClient.subreddit(subreddit)
     redditClient.validate_on_submit = True
 
-    redditPost = subreddit.submit(title = detailsDict["title"], url = detailsDict["imgurLink"])
-    return str(post.id)
+    redditPost = subreddit.submit(title=detailsDict["title"],
+                                  url=detailsDict["imgurLink"])
+    return str(redditPost.id)
 
 
 def comment_on_post(postId, content):
-    submission = redditClient.submission(id=str(post.id))
+    redditClient = reddit_authentication()
+    submission = redditClient.submission(id=str(postId))
     submission.reply(content)
+
 
 # obtains absolute paths from user specified basePath variable and
 # outputs them to user specified pathToPosts variable
@@ -138,6 +150,7 @@ def get_media_paths():
 
     postsTxt.close()
 
+
 # Translates paths in posts.txt to a list
 def posts_to_list():
     file = open(pathToPosts)
@@ -146,14 +159,13 @@ def posts_to_list():
     return lines
 
 
-# for populating, store author and the primary key in a dictionary to make creating subreddits easier
 # adds multiple subreddits to db
 def populate_subreddits():
     posts = posts_to_list()
+    #removes the empty line at the end of a file
+    del posts[-1]
     for path in posts:
         deconstruction = deconstruct_path(path)
-        print(deconstruction["subreddit"])
-        #insert_subreddit(deconstruction["subreddit"])
+        insert_subreddit(deconstruction["subreddit"])
 
-get_media_paths()
-populate_subreddits()
+
