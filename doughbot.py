@@ -202,7 +202,7 @@ def populate_subreddits():
         insert_subreddit(deconstruction["subreddit"])
 
 
-# takes an unposted entry from the database, uploads to imgur and reddit, and returns postId
+# takes an unposted entry from the database, uploads to imgur and reddit, and returns dictionary with postId added
 def post_from_database(subreddit):
     try:
         unposted = query_database(
@@ -214,11 +214,20 @@ def post_from_database(subreddit):
         query_database('''UPDATE Posts SET posted = 1 WHERE mediaPath = ''' +
                        '"' + detailsDict["path"] + '"')
         print("Image has been posted.")
-        return postId
+        detailsDict["postId"] = postId
+        return detailsDict
     except:
         print("Error encountered while posting from database.")
 
+def personal_comment(detailsDict):
+    submission = redditClient.submission(id=str(post.id))
+    submission.reply("This image was originally posted by [" + detailsDict["author"] + "](" +
+                     "https://www.reddit.com/u/" + detailsDict["author"] +
+                     ") obtained from [" + detailsDict["subreddit"] + "](" +
+                     "https://www.reddit.com/r/" + detailsDict["subreddit"] + ").")
 
+    submission.reply("Note, if the link to the user's page does not work it is likely because their username contains underscores. The original posters handle is the first sequence in the title. You can attempt to find them by following a link in the form of: http://www.reddit.com/u/red_sonja")
+                            
 create_database()
 
 #posts = posts_to_list()
