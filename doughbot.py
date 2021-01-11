@@ -151,7 +151,7 @@ def deconstruct_path(mediaPath):
     postId = post[len(post) - 1].split('.')[0]
     title = post[1]
     #grabs title exluding subreddit and postId
-    title = title + ' '.join(post[1:len(post) - 1])
+    title = ' '.join(post[1:len(post) - 1]) + " | obtained from user: " + author
     submission = {
         "subreddit": subreddit.lower(),
         "author": author,
@@ -193,6 +193,7 @@ def upload_to_imgur(detailsDict):
 
             imgurUrl = response.json()
             detailsDict["imgurLink"] = imgurUrl["data"]["link"]
+            print("uploaded to imgur")
             print(detailsDict["imgurLink"])
             return detailsDict
         except:
@@ -208,11 +209,12 @@ def upload_to_reddit(detailsDict, subreddit):
         subreddit = redditClient.subreddit(subreddit)
         redditClient.validate_on_submit = True
 
+
         redditPost = subreddit.submit(title=detailsDict["title"],
                                       url=detailsDict["imgurLink"])
         return redditPost
     except:
-        print("Error while posting to reddit.")
+        print("Error while posting to reddit. Did you specify the subreddit?")
 
 # leaves a comment on specified reddit post
 def comment_on_post(post, content):
@@ -280,7 +282,6 @@ def post_from_database(subreddit):
             '''SELECT mediaPath FROM Posts WHERE posted = 0 ''')
         detailsDict = deconstruct_path(unposted[0][0])
         detailsDict = upload_to_imgur(detailsDict)
-        print("uploaded to imgur")
         postId = upload_to_reddit(detailsDict, subreddit).id
         query_database('''UPDATE Posts SET posted = 1 WHERE mediaPath = ''' +
                        '"' + detailsDict["path"] + '"')
@@ -303,8 +304,9 @@ def personal_comment(detailsDict):
 
     submission.reply(
         "Note, if the link to the user's page does not work it is likely because their username\
-         contains underscores. The original posters handle is the first sequence in the title.\
-         You can try to find them by using a link formed like: http://www.reddit.com/u/red_sonja"
+         contains underscores. The original posters handle is the first sequence in the following: " + 
+         detailsDict["path"].split("/")[5] + " and the part before the extension is the og post id " +
+         "You can try to find them by using a link formed like: http://www.reddit.com/u/red_sonja"
     )
 
 
@@ -357,7 +359,6 @@ def main():
             disable_crosspost(detailsDict["subreddit"])
 
     print("Execution completed.")
-
 
 
 
