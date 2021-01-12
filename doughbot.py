@@ -1,4 +1,6 @@
+import datetime
 import argparse
+import sys
 import sqlite3
 import os
 import praw
@@ -22,21 +24,29 @@ def create_database():
 
     # creates Users table
     cursor.execute("CREATE TABLE IF NOT EXISTS Users \
-         (userId INTEGER NOT NULL PRIMARY KEY, name TEXT NOT NULL UNIQUE, allowPost INTEGER)"
-                   )
+                  (userId INTEGER NOT NULL PRIMARY KEY,\
+                   name TEXT NOT NULL UNIQUE,\
+                   allowPost INTEGER)")
 
     # creates Subreddits table
     cursor.execute("CREATE TABLE IF NOT EXISTS Subreddits \
-         (subredditId INTEGER NOT NULL PRIMARY KEY, \
-         name TEXT NOT NULL UNIQUE, allowsCrossPosts INTEGER, allowPost INTEGER);"
-                   )
+                   (subredditId INTEGER NOT NULL PRIMARY KEY, \
+                    name TEXT NOT NULL UNIQUE,\
+                    allowsCrossPosts INTEGER,\
+                    allowPost INTEGER);")
 
     # creates Posts table
-    cursor.execute("CREATE TABLE IF NOT EXISTS Posts \
-         (id INTEGER NOT NULL PRIMARY KEY, title TEXT NOT NULL, author INTEGER NOT NULL, mediaPath TEXT, subreddit INTEGER NOT NULL, \
-          posted INTEGER, \
-         FOREIGN KEY (author) REFERENCES Users(userId),\
-         FOREIGN KEY (subreddit) REFERENCES Subreddits(id));")
+    cursor.execute("CREATE TABLE IF NOT EXISTS Posts\
+                   (id INTEGER NOT NULL PRIMARY KEY,\
+                    title TEXT NOT NULL,\
+                    author INTEGER NOT NULL,\
+                    mediaPath TEXT,\
+                    subreddit INTEGER NOT NULL,\
+                    posted INTEGER,\
+                    postAttempts INTEGER DEFAULT 0,\
+                    imgurLink TEXT,\
+                    FOREIGN KEY (author) REFERENCES Users(userId),\
+                    FOREIGN KEY (subreddit) REFERENCES Subreddits(id));")
 
     con.commit()
 
@@ -46,7 +56,6 @@ def query_database(query):
     con = sqlite3.connect('main.db')
     con.execute("PRAGMA foreign_keys = on")
     cursor = con.cursor()
-
     cursor.execute(query)
     con.commit()
     return cursor.fetchall()
@@ -91,13 +100,15 @@ def insert_subreddit(name):
 def insert_full_entry(detailsDict):
     insert_user(detailsDict["author"])
 
-    authorPrimaryKey = query_database('''SELECT userId FROM Users WHERE name = '''\
-            + '"' + detailsDict["author"] + '"')[0][0]
+    authorPrimaryKey = query_database(
+            '''SELECT userId FROM Users WHERE name = "'''\
+               +detailsDict["author"] + '"')[0][0]
 
     insert_subreddit(detailsDict["subreddit"])
+
     subredditPrimaryKey = query_database(
         '''SELECT subredditId FROM Subreddits WHERE\
-            name = ''' + '"' + detailsDict["subreddit"] + '"')[0][0]
+            name = "''' + detailsDict["subreddit"] + '"')[0][0]
 
     insert_post(authorPrimaryKey,
                 subredditPrimaryKey,
@@ -115,6 +126,7 @@ def disable_post_to_subreddit(subreddit):
 def disable_post_by_user(username):
     query_database('''UPDATE Users SET allowPost = 0 WHERE name = "''' +
                    username + '"')
+
 
 # bulk disabling of subreddits
 def disable_post_to_subreddit_from_file(pathToTextFile):
@@ -150,8 +162,11 @@ def deconstruct_path(mediaPath):
     author = post[0]
     postId = post[len(post) - 1].split('.')[0]
     title = post[1]
+
     #grabs title exluding subreddit and postId
-    title = ' '.join(post[1:len(post) - 1]) + " | obtained from user: " + author
+    title = ' '.join(
+        post[1:len(post) - 1]) + " | obtained from user: " + author
+
     submission = {
         "subreddit": subreddit.lower(),
         "author": author,
@@ -161,8 +176,18 @@ def deconstruct_path(mediaPath):
     }
     return submission
 
+
 # uploads media and returns an updated dictionary with link
 def upload_to_imgur(detailsDict):
+    postAttempts = query_database(
+        '''SELECT postAttempts FROM Posts WHERE mediaPath = "''' +
+        detailsDict["path"] + '"')[0][0]
+
+    if postAttempts >= 3:
+        query_database('''UPDATE Posts SET posted = 1 WHERE mediaPath = ''' +
+                       '"' + detailsDict["path"] + '"')
+        sys.exit()
+
     allowPostUser = query_database(
         '''SELECT allowPost FROM Users WHERE name = "''' +
         detailsDict["author"] + '"')[0][0]
@@ -193,12 +218,21 @@ def upload_to_imgur(detailsDict):
 
             imgurUrl = response.json()
             detailsDict["imgurLink"] = imgurUrl["data"]["link"]
-            print("uploaded to imgur")
-            print(detailsDict["imgurLink"])
+            print("uploaded to imgur\n")
+            print(detailsDict["imgurLink"] + '\n')
+            query_database('''UPDATE Posts SET imgurLink ="''' +
+                           detailsDict["imgurLink"] +
+                           '''" WHERE mediaPath = "''' + detailsDict["path"] +
+                           '"')
             return detailsDict
         except:
             print("Unable to upload to imgur")
+            query_database(
+                '''UPDATE Posts SET postAttempts = postAttempts + 1 WHERE mediaPath = '''
+                + '"' + detailsDict["path"] + '"')
+            sys.exit()
         else:
+            sys.exit()
             print("error, post or subreddit is not supposed to be posted to")
 
 
@@ -209,12 +243,16 @@ def upload_to_reddit(detailsDict, subreddit):
         subreddit = redditClient.subreddit(subreddit)
         redditClient.validate_on_submit = True
 
-
         redditPost = subreddit.submit(title=detailsDict["title"],
                                       url=detailsDict["imgurLink"])
+        now = datetime.datetime.now()
+        print("uploaded to reddit at: " +
+              now.strftime('%H:%M:%S on %A, %B the %dth, %Y\n'))
         return redditPost
     except:
+        sys.exit()
         print("Error while posting to reddit. Did you specify the subreddit?")
+
 
 # leaves a comment on specified reddit post
 def comment_on_post(post, content):
@@ -266,6 +304,7 @@ def populate_subreddits():
         insert_subreddit(deconstruction["subreddit"])
     return posts
 
+
 # obtains a paths from get_media_paths and Translates info into the database
 def populate_database():
     get_media_paths()
@@ -280,16 +319,18 @@ def post_from_database(subreddit):
     try:
         unposted = query_database(
             '''SELECT mediaPath FROM Posts WHERE posted = 0 ''')
+
         detailsDict = deconstruct_path(unposted[0][0])
         detailsDict = upload_to_imgur(detailsDict)
+
         postId = upload_to_reddit(detailsDict, subreddit).id
         query_database('''UPDATE Posts SET posted = 1 WHERE mediaPath = ''' +
                        '"' + detailsDict["path"] + '"')
-        print("Image has been posted to reddit.")
         detailsDict["postId"] = postId
         return detailsDict
     except:
         print("Error encountered while posting from database.")
+
 
 # personal comment for my own usecase detailed in readme
 def personal_comment(detailsDict):
@@ -304,13 +345,11 @@ def personal_comment(detailsDict):
 
     submission.reply(
         "Note, if the link to the user's page does not work it is likely because their username\
-         contains underscores. The original posters handle is the first sequence in the following: " + 
-         detailsDict["path"].split("/")[5] + " and the part before the extension is the og post id " +
-         "You can try to find them by using a link formed like: http://www.reddit.com/u/red_sonja"
+         contains underscores. The original posters handle is the first sequence in the following: "
+        + detailsDict["path"].split("/")[5] +
+        " and the part before the extension is the og post id " +
+        "You can try to find them by using a link formed like: http://www.reddit.com/u/red_sonja"
     )
-
-
-
 
 
 def main():
@@ -348,9 +387,12 @@ def main():
 
     if args.disable_subreddit is not None:
         disable_post_to_subreddit_from_file(args.disable_subreddit)
-
-    detailsDict = post_from_database(args.subreddit)
-    personal_comment(detailsDict)
+    try:
+        detailsDict = post_from_database(args.subreddit)
+        personal_comment(detailsDict)
+    except:
+        print("Main function did not terminate properly.")
+        sys.exit()
 
     if args.crosspost:
         try:
@@ -359,7 +401,6 @@ def main():
             disable_crosspost(detailsDict["subreddit"])
 
     print("Execution completed.")
-
 
 
 if __name__ == "__main__":
