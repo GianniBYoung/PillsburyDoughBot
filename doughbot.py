@@ -46,7 +46,7 @@ def create_database():
                     postAttempts INTEGER DEFAULT 0,\
                     imgurLink TEXT,\
                     FOREIGN KEY (author) REFERENCES Users(userId),\
-                    FOREIGN KEY (subreddit) REFERENCES Subreddits(id));")
+                    FOREIGN KEY (subreddit) REFERENCES Subreddits(subredditId));")
 
     con.commit()
 
