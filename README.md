@@ -1,10 +1,8 @@
-# PillsburyDoughBot
-A bot that posts images from a local directory to a to imgur and a specified subreddit
+THIS IS A VERY ROUGH DRAFT OF THE README.
 
-Upon first usage run the setup.py and provide the path to directory containing images as a command line arguement or type it in once prompted.
+This program takes a directory of images/mp4s/gifs and uploads them to a user specified subreddit. It is intended to be used alongside Bulk Downloader for Reddit by aliparlakci(https://github.com/aliparlakci/bulk-downloader-for-reddit) with the default file path settings. If you have not used his program before I would reccomend creating an empty directory that will store the images to be downloaded and specifying the absolute path in the 'basePath' variable in config.py. Once the required information is entered in config.py you can either create a service for watchpuppy.py or run it on its own. watchpuppy will watch the given directory for new files and add them to the database. 
 
-Usage: python3 doughbot.py <subreddit> [PATH to directory containing images]
+If however, you have already used Bulk downloader for reddit and have a pre-existing media directory you can call the function get_media_paths() and it will recurse through the basePath writing the path to a text file whose location is specified in config.py. You can then call populate_database() to translate the paths into the database.
 
-*providing the path to directory containing images will update the masterlist.txt
-
-*Note make sure to escape special characters in the auth.ini with a percent sign. Example: 1234% -> 12345%%
+Once the database has been populated regular usage is as follows: 
+python3 doughbot.py --subreddit <subreddit>

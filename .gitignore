@@ -1,8 +1,8 @@
 auth.ini
-noCrossPost.txt
-refrainlist.txt
-imageLog.txt
-geckodriver.log
-masterMedia.txt
-pixxelzombie_she's_ready_to_serve_c9l7zh.jpg
+subnono.txt
+posts.txt
+config.py
+*.txt
 *.jpg
+*.db
+__pycache__

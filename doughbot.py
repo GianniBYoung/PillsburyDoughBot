@@ -1,286 +1,411 @@
-import argparse
-import configparser
 import datetime
+import argparse
+import sys
+import sqlite3
 import os
-import subprocess
-import time
-from pathlib import Path
-
 import praw
 import requests
-import schedule
+from config import *
 
 
-def reddit_authentication(config):
-
-    config.read('credentials')
-    redditClientId = config.get('credentials', 'reddit_Client_Id')
-    redditClientSecret = config.get('credentials', 'reddit_Client_Secret')
-    redditUsername = config.get('credentials', 'reddit_Username')
-    redditPassword = config.get('credentials', 'reddit_Password')
-    return praw.Reddit(client_id=redditClientId,
-                       client_secret=redditClientSecret,
+# returns a Reddit client with users details
+def reddit_authentication():
+    return praw.Reddit(client_id=redditClientid,
+                       client_secret=redditClientsecret,
                        username=redditUsername,
                        password=redditPassword,
                        user_agent='PillsburyDoughBot')
 
 
-def upload_media(title, imagePath, projectPath, originalPoster):
+def create_database():
+    con = sqlite3.connect('main.db')
+    con.execute("PRAGMA foreign_keys = on")
+    cursor = con.cursor()
 
-    refrainList = open('refrainlist.txt', 'r')
+    # creates Users table
+    cursor.execute("CREATE TABLE IF NOT EXISTS Users \
+                  (userId INTEGER NOT NULL PRIMARY KEY,\
+                   name TEXT NOT NULL UNIQUE,\
+                   allowPost INTEGER)")
 
-    while True:
-        line = refrainList.readline().strip()
-        if not line:
-            break
-        elif originalPoster == line:
-            refrainList.close()
-            print("The original poster is on the refrainList, skipping")
-            return -1
+    # creates Subreddits table
+    cursor.execute("CREATE TABLE IF NOT EXISTS Subreddits \
+                   (subredditId INTEGER NOT NULL PRIMARY KEY, \
+                    name TEXT NOT NULL UNIQUE,\
+                    allowsCrossPosts INTEGER,\
+                    allowPost INTEGER);")
 
-    refrainList.close()
+    # creates Posts table
+    cursor.execute("CREATE TABLE IF NOT EXISTS Posts\
+                   (id INTEGER NOT NULL PRIMARY KEY,\
+                    title TEXT NOT NULL,\
+                    author INTEGER NOT NULL,\
+                    mediaPath TEXT,\
+                    subreddit INTEGER NOT NULL,\
+                    posted INTEGER,\
+                    postAttempts INTEGER DEFAULT 0,\
+                    imgurLink TEXT,\
+                    FOREIGN KEY (author) REFERENCES Users(userId),\
+                    FOREIGN KEY (subreddit) REFERENCES Subreddits(subredditId));")
 
-    auth = projectPath + '/auth.ini'
-    config = configparser.ConfigParser()
-    config.read(auth)
-    cookie = config.get('credentials', 'imgur_cookie')
-    fileExtension = imagePath[-3:]
+    con.commit()
 
-    if fileExtension == 'mp4':
-        fileType = 'video'
+
+# queries the database and returns the results
+def query_database(query):
+    con = sqlite3.connect('main.db')
+    con.execute("PRAGMA foreign_keys = on")
+    cursor = con.cursor()
+    cursor.execute(query)
+    con.commit()
+    return cursor.fetchall()
+
+
+# inserts a single user to the db
+def insert_user(name):
+    con = sqlite3.connect('main.db')
+    con.execute("PRAGMA foreign_keys = on")
+    cursor = con.cursor()
+
+    cursor.execute(
+        '''INSERT OR IGNORE INTO Users(name, allowPost) \
+                      VALUES (?,?)''', (name, 1))
+    con.commit()
+
+
+# inserts a single post to the db
+def insert_post(authorKey, subredditPrimaryKey, mediaPath, title="Unknown"):
+    con = sqlite3.connect('main.db')
+    cursor = con.cursor()
+
+    cursor.execute(
+        '''INSERT OR IGNORE INTO Posts(title, author, mediaPath, subreddit, posted) \
+           VALUES (?,?,?,?,?)''',
+        (title, authorKey, mediaPath, subredditPrimaryKey, 0))
+    con.commit()
+
+
+# inserts a single subreddit to the db
+def insert_subreddit(name):
+    con = sqlite3.connect('main.db')
+    cursor = con.cursor()
+
+    cursor.execute(
+        '''INSERT OR IGNORE INTO Subreddits(name, allowsCrossPosts, allowPost) \
+           VALUES (?,?,?)''', (name, 1, 1))
+    con.commit()
+
+
+# inserts a user, subreddit, and post
+def insert_full_entry(detailsDict):
+    insert_user(detailsDict["author"])
+
+    authorPrimaryKey = query_database(
+            '''SELECT userId FROM Users WHERE name = "'''\
+               +detailsDict["author"] + '"')[0][0]
+
+    insert_subreddit(detailsDict["subreddit"])
+
+    subredditPrimaryKey = query_database(
+        '''SELECT subredditId FROM Subreddits WHERE\
+            name = "''' + detailsDict["subreddit"] + '"')[0][0]
+
+    insert_post(authorPrimaryKey,
+                subredditPrimaryKey,
+                detailsDict["path"],
+                title=detailsDict["title"])
+
+
+# disables posting content to specified reddits
+def disable_post_to_subreddit(subreddit):
+    query_database('''UPDATE subreddits SET allowPost = 0 WHERE name = "''' +
+                   subreddit + '"')
+
+
+# disables posting of specified users content
+def disable_post_by_user(username):
+    query_database('''UPDATE Users SET allowPost = 0 WHERE name = "''' +
+                   username + '"')
+
+
+# bulk disabling of subreddits
+def disable_post_to_subreddit_from_file(pathToTextFile):
+    file = open(pathToTextFile)
+    lines = file.read().split('\n')
+    file.close()
+    del lines[-1]
+
+    for line in lines:
+        disable_post_to_subreddit(line)
+
+
+# bulk disabling of posts from specified users
+def disable_post_by_user_from_file(pathToTextFile):
+    file = open(pathToTextFile)
+    lines = file.read().split('\n')
+    file.close()
+
+    for line in lines:
+        disable_post_by_user(line)
+
+
+def disable_crosspost(subreddit):
+    query_database(
+        '''UPDATE Subreddits SET allowsCrossPosts = 0 WHERE name = "''' +
+        subreddit + '"')
+
+
+# returns a dictionary containing subreddit, author, title, postid
+def deconstruct_path(mediaPath):
+    subreddit = mediaPath.split("/")[4]
+    post = mediaPath.split("/")[5].split("_")
+    author = post[0]
+    postId = post[len(post) - 1].split('.')[0]
+    title = post[1]
+
+    #grabs title exluding subreddit and postId
+    title = ' '.join(
+        post[1:len(post) - 1]) + " | obtained from user: " + author
+
+    submission = {
+        "subreddit": subreddit.lower(),
+        "author": author,
+        "title": title,
+        "postId": postId,
+        "path": mediaPath
+    }
+    return submission
+
+
+# uploads media and returns an updated dictionary with link
+def upload_to_imgur(detailsDict):
+    postAttempts = query_database(
+        '''SELECT postAttempts FROM Posts WHERE mediaPath = "''' +
+        detailsDict["path"] + '"')[0][0]
+
+    if postAttempts >= 3:
+        query_database('''UPDATE Posts SET posted = 1 WHERE mediaPath = ''' +
+                       '"' + detailsDict["path"] + '"')
+        sys.exit()
+
+    allowPostUser = query_database(
+        '''SELECT allowPost FROM Users WHERE name = "''' +
+        detailsDict["author"] + '"')[0][0]
+
+    allowPostSubreddit = query_database(
+        '''SELECT allowPost FROM Subreddits WHERE name = "''' +
+        detailsDict["subreddit"] + '"')[0][0]
+
+    if (allowPostUser and allowPostSubreddit):
+
+        if detailsDict["path"].endswith(".mp4"):
+            fileType = 'video'
+        else:
+            fileType = 'image'
+
+        try:
+            url = "https://api.imgur.com/3/upload"
+            payload = {'title': detailsDict["title"]}
+            files = [(fileType, open(detailsDict["path"], 'rb')),
+                     ('type', open(detailsDict["path"], 'rb'))]
+            headers = {'Cookie': imgurCookie}
+
+            response = requests.request("POST",
+                                        url,
+                                        headers=headers,
+                                        data=payload,
+                                        files=files)
+
+            imgurUrl = response.json()
+            detailsDict["imgurLink"] = imgurUrl["data"]["link"]
+            print("uploaded to imgur\n")
+            print(detailsDict["imgurLink"] + '\n')
+            query_database('''UPDATE Posts SET imgurLink ="''' +
+                           detailsDict["imgurLink"] +
+                           '''" WHERE mediaPath = "''' + detailsDict["path"] +
+                           '"')
+            return detailsDict
+
+        except:
+            print("Unable to upload to imgur")
+            query_database(
+                '''UPDATE Posts SET postAttempts = postAttempts + 1 WHERE mediaPath = '''
+                + '"' + detailsDict["path"] + '"')
+            sys.exit()
     else:
-        fileType = 'image'
+        query_database('''UPDATE Posts SET posted = 1 WHERE mediaPath = ''' +
+                       '"' + detailsDict["path"] + '"')
+        print("error, post or subreddit is not supposed to be posted to")
+        sys.exit()
 
+
+# uploads media to specified subreddit and returns a praw post
+def upload_to_reddit(detailsDict, subreddit):
     try:
+        redditClient = reddit_authentication()
+        subreddit = redditClient.subreddit(subreddit)
+        redditClient.validate_on_submit = True
 
-        url = "https://api.imgur.com/3/upload"
-        payload = {'title': title}
-        files = [(fileType, open(imagePath, 'rb')),
-                 ('type', open(imagePath, 'rb'))]
-        headers = {'Cookie': cookie}
-
-        response = requests.request("POST",
-                                    url,
-                                    headers=headers,
-                                    data=payload,
-                                    files=files)
-        return response
-
+        redditPost = subreddit.submit(title=detailsDict["title"],
+                                      url=detailsDict["imgurLink"])
+        now = datetime.datetime.now()
+        print("uploaded to reddit at: " +
+              now.strftime('%H:%M:%S on %A, %B the %dth, %Y\n'))
+        return redditPost
     except:
-        print("An error occured")
+        sys.exit()
+        print("Error while posting to reddit. Did you specify the subreddit?")
 
 
-def check_if_allowed_subreddit(subreddit, projectPath):
-
-    blackListSubs = open(projectPath + '/blackListSubs.txt', 'r')
-
-    while True:
-        line = blackListSubs.readline().strip()
-        if not line:
-            break
-        elif subreddit == line:
-            blackListSubs.close()
-            return False
-
-    blackListSubs.close()
-    return True
+# leaves a comment on specified reddit post
+def comment_on_post(post, content):
+    redditClient = reddit_authentication()
+    submission = redditClient.submission(id=str(post.id))
+    submission.reply(content)
 
 
-def cross_post(imageTitle, crossSubreddit, post):
+def crosspost(detailsDict):
+    redditClient = reddit_authentication()
+    redditPost = redditClient.submission(id=detailsDict["postId"])
+    crossPost = redditPost.crosspost(subreddit=detailsDict["subreddit"],
+                                     title=detailsDict["title"],
+                                     nsfw=True)
+    return crossPost
 
-    crossPostable = True
-    #searches for artists that are meant to be excluded
-    refrainList = open('refrainlist.txt', 'r')
 
-    while True:
-        line = refrainList.readline().strip()
-        if not line:
-            break
-        elif imageTitle[0].strip() == line:
-            refrainList.close()
-            return -1
+# obtains absolute paths from user specified basePath variable and
+# outputs them to user specified pathToPosts variable
+def get_media_paths():
+    postsTxt = open(pathToPosts, 'w')
+    for subdir, dirs, files in os.walk(basePath):
+        for filename in files:
+            filepath = subdir + os.sep + filename
 
-    refrainList.close()
+            if filepath.endswith(".jpg") or filepath.endswith(
+                    ".png") or filepath.endswith(".gif") or filepath.endswith(
+                        ".mp4"):
+                postsTxt.write(filepath + '\n')
 
-    #checks if the given subreddit allows crossposts
-    noCrossPost = open('noCrossPost.txt', 'r')
+    postsTxt.close()
 
-    while True:
-        line = noCrossPost.readline().strip()
-        if not line:
-            break
-        elif crossSubreddit == line:
-            crossPostable = False
 
-    noCrossPost.close()
+# Translates paths in posts.txt to a list
+def posts_to_list():
+    file = open(pathToPosts)
+    lines = file.read().split('\n')
+    file.close()
+    del lines[-1]
+    return lines
 
-    #attempts to crosspost and if the request is blocked noCrossPost.txt is updated
-    if crossPostable:
+
+# adds multiple subreddits to db
+def populate_subreddits():
+    posts = posts_to_list()
+    del posts[-1]
+    for path in posts:
+        deconstruction = deconstruct_path(path)
+        insert_subreddit(deconstruction["subreddit"])
+    return posts
+
+
+# obtains a paths from get_media_paths and Translates info into the database
+def populate_database():
+    get_media_paths()
+    posts = populate_subreddits()
+    for line in posts:
+        insert_full_entry(deconstruct_path(line))
+
+
+# takes an unposted entry from the db, uploads to imgur and reddit
+# and returns dictionary with postId added
+def post_from_database(subreddit):
+    try:
+        unposted = query_database(
+            '''SELECT mediaPath FROM Posts WHERE posted = 0 ''')
+
+        detailsDict = deconstruct_path(unposted[0][0])
+        detailsDict = upload_to_imgur(detailsDict)
+
+        postId = upload_to_reddit(detailsDict, subreddit).id
+        query_database('''UPDATE Posts SET posted = 1 WHERE mediaPath = ''' +
+                       '"' + detailsDict["path"] + '"')
+        detailsDict["postId"] = postId
+        return detailsDict
+    except:
+        print("Error encountered while posting from database.")
+
+
+# personal comment for my own usecase detailed in readme
+def personal_comment(detailsDict):
+    redditClient = reddit_authentication()
+    submission = redditClient.submission(id=detailsDict["postId"])
+    submission.reply("This image was originally posted by [" +
+                     detailsDict["author"] + "](" +
+                     "https://www.reddit.com/u/" + detailsDict["author"] +
+                     ") obtained from [" + detailsDict["subreddit"] + "](" +
+                     "https://www.reddit.com/r/" + detailsDict["subreddit"] +
+                     ").")
+
+    submission.reply(
+        "Note, if the link to the user's page does not work it is likely because their username\
+         contains underscores. The original posters handle is the first sequence in the following: "
+        + detailsDict["path"].split("/")[5] +
+        " and the part before the extension is the og post id " +
+        "You can try to find them by using a link formed like: http://www.reddit.com/u/red_sonja"
+    )
+
+
+def main():
+    parser = argparse.ArgumentParser(
+        description="Upload Media to Specified Subreddit")
+    parser.add_argument("-s",
+                        "--subreddit",
+                        help="Specify Subreddit",
+                        required=False)
+    parser.add_argument("-c",
+                        "--crosspost",
+                        help="Enable Cross Posting",
+                        required=False,
+                        action="store_true")
+    parser.add_argument("-p",
+                        "--populate-from-file",
+                        help="populate database with pre existing data",
+                        required=False,
+                        action="store_true")
+    parser.add_argument("--disable-user",
+                        help="restrict posting specified users",
+                        required=False)
+    parser.add_argument("--disable-subreddit",
+                        help="restrict posting specified subreddits",
+                        required=False)
+    args = parser.parse_args()
+
+    create_database()
+
+    if args.populate_from_file:
+        populate_database()
+
+    if args.disable_user is not None:
+        disable_post_by_user_from_file(args.disable_user)
+
+    if args.disable_subreddit is not None:
+        disable_post_to_subreddit_from_file(args.disable_subreddit)
+    try:
+        detailsDict = post_from_database(args.subreddit)
+        personal_comment(detailsDict)
+    except:
+        print("Main function did not terminate properly.")
+        sys.exit()
+
+    if args.crosspost:
         try:
-            post.crosspost(subreddit=crossSubreddit,
-                           title=imageTitle,
-                           nsfw=True)
+            crosspost(detailsDict)
         except:
+            disable_crosspost(detailsDict["subreddit"])
 
-            print(
-                "Error cross posting. ."
-            )
-            with open('noCrossPost.txt', 'w') as file:
-                file.write(crossSubreddit)
-
-    else:
-        print("r/" + crossSubreddit +
-              " cannot be posted to or is on the refrain list.")
-        return
+    print("Execution completed.")
 
 
-def update_master(path):
-    print("The master record will be updated.")
-    subprocess.call([
-        os.path.dirname(os.path.realpath(__file__)) + "/directorylist.sh", path
-    ])
+if __name__ == "__main__":
+    main()
 
-
-def increment_image_log(imageLogPath, imageToPost):
-    imageLog = open(imageLogPath, 'w')
-    imageLog.write(str(imageToPost))
-    imageLog.close()
-    return
-
-
-def update_image_log(imageLogPath):
-    if imageLogPath.is_file():
-        imageLog = open(imageLogPath, 'r')
-        imageToPost = int(imageLog.readline()) + 1
-        imageLog.close()
-
-    else:
-        imageLog = open(imageLogPath, 'w')
-        imageToPost = 0
-        imageLog.write(imageToPost)
-        imageLog.close()
-
-    return imageToPost
-
-
-def get_image_paths(projectPath):
-    masterList = open(projectPath + '/masterMedia.txt', 'r')
-    with open(projectPath + '/masterMedia.txt') as f:
-        imagePaths = f.read().splitlines()
-    return imagePaths
-
-
-def doughbot(args):
-
-    if args.update:
-        update_master(args.path)
-
-    projectPath = os.path.dirname(os.path.realpath(__file__))
-    authFile = projectPath + "/auth.ini"
-    config = configparser.ConfigParser()
-    config.read(authFile)
-    redditClient = reddit_authentication(config)
-    subreddit = redditClient.subreddit(args.subreddit)
-    redditClient.validate_on_submit = True
-
-    #keeps track of what image should be posted
-    imageLogPath = Path(projectPath + '/imageLog.txt')
-    imageToPost = update_image_log(imageLogPath)
-
-    #cleans up the title and provides the path to image to be posted
-    imagePath = get_image_paths(projectPath)[imageToPost].strip()
-    imageTitle = imagePath.split("/")
-    crossSubreddit = imageTitle[4]
-    imageTitle = imageTitle[len(imageTitle) - 1]
-    originalPoster = imageTitle.split("_")
-    originalPoster = originalPoster[0]
-    imageTitle = imageTitle.replace("_", " ")
-    imageTitle = imageTitle.replace("-", " ")
-    imageTitle = imageTitle.replace(".", " ")
-    imageTitle = imageTitle.rsplit(' ', 2)[0]
-
-    increment_image_log(imageLogPath, imageToPost)
-
-    if check_if_allowed_subreddit(crossSubreddit, projectPath):
-        try:
-
-            #json response containing image info
-            imageResponse = upload_media(imageTitle, imagePath, projectPath,
-                                         originalPoster).json()
-
-            imageUrl = imageResponse["data"]["link"]
-            post = subreddit.submit(title=imageTitle, url=imageUrl)
-
-        except:
-            print(
-                "Unable to upload. Does the file exist? Subreddit exist? Credentials correct?"
-            )
-            return -1
-
-        if args.crosspost:
-            try:
-
-                cross_post(imageTitle, crossSubreddit, post)
-
-            except:
-                print("Unable to crosspost")
-
-        try:
-
-            submission = redditClient.submission(id=str(post.id))
-            submission.reply("This image was originally posted by [" +
-                             originalPoster + "](" +
-                             "https://www.reddit.com/u/" + originalPoster +
-                             ") obtained from [" + crossSubreddit + "](" +
-                             "https://www.reddit.com/r/" + crossSubreddit +
-                             ").")
-
-            submission.reply(
-                "Note, if the link to the user's page does not work it is likely because their username contains underscores. The original posters handle is the first sequence in the title. You can attempt to find them by following a link in the form of: http://www.reddit.com/u/red_sonja"
-            )
-
-        except:
-            return -1
-
-    print(datetime.datetime.now().strftime('Posted at: %I:%M\nImage Link: ' +
-                                           imageUrl))
-
-    return
-
-
-parser = argparse.ArgumentParser(
-    description="Upload Media to Specified Subreddit")
-parser.add_argument("-s",
-                    "--subreddit",
-                    help="Specify Subreddit",
-                    required=True)
-parser.add_argument("-u",
-                    "--update",
-                    help="Update MasterMedia.txt",
-                    required=False,
-                    action="store_true")
-parser.add_argument("-c",
-                    "--crosspost",
-                    help="Enable Cross Posting",
-                    required=False,
-                    action="store_true")
-parser.add_argument("-t",
-                    "--timer",
-                    help="Set Autopost Timer",
-                    required=False,
-                    type=int)
-parser.add_argument("-p",
-                    "--path",
-                    help="Set Path to Saved Images",
-                    required=False)
-args = parser.parse_args()
-
-doughbot(args)
-
-#For scheduling task execution
-print("Posting new image every " + str(args.timer) + " minutes")
-if args.timer > 0:
-    schedule.every(args.timer).minutes.do(doughbot, args=args)
-    while True:
-        schedule.run_pending()
-        time.sleep(1)
