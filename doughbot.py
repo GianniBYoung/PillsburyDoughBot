@@ -225,15 +225,18 @@ def upload_to_imgur(detailsDict):
                            '''" WHERE mediaPath = "''' + detailsDict["path"] +
                            '"')
             return detailsDict
+
         except:
             print("Unable to upload to imgur")
             query_database(
                 '''UPDATE Posts SET postAttempts = postAttempts + 1 WHERE mediaPath = '''
                 + '"' + detailsDict["path"] + '"')
             sys.exit()
-        else:
-            sys.exit()
-            print("error, post or subreddit is not supposed to be posted to")
+    else:
+        query_database('''UPDATE Posts SET posted = 1 WHERE mediaPath = ''' +
+                       '"' + detailsDict["path"] + '"')
+        print("error, post or subreddit is not supposed to be posted to")
+        sys.exit()
 
 
 # uploads media to specified subreddit and returns a praw post
@@ -405,3 +408,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
