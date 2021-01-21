@@ -46,7 +46,8 @@ def create_database():
                     postAttempts INTEGER DEFAULT 0,\
                     imgurLink TEXT,\
                     FOREIGN KEY (author) REFERENCES Users(userId),\
-                    FOREIGN KEY (subreddit) REFERENCES Subreddits(subredditId));")
+                    FOREIGN KEY (subreddit) REFERENCES Subreddits(subredditId));"
+                   )
 
     con.commit()
 
@@ -167,14 +168,14 @@ def deconstruct_path(mediaPath):
     title = ' '.join(
         post[1:len(post) - 1]) + " | obtained from user: " + author
 
-    submission = {
+    detailsDict = {
         "subreddit": subreddit.lower(),
         "author": author,
         "title": title,
         "postId": postId,
         "path": mediaPath
     }
-    return submission
+    return detailsDict
 
 
 # uploads media and returns an updated dictionary with link
@@ -267,10 +268,19 @@ def comment_on_post(post, content):
 def crosspost(detailsDict):
     redditClient = reddit_authentication()
     redditPost = redditClient.submission(id=detailsDict["postId"])
-    crossPost = redditPost.crosspost(subreddit=detailsDict["subreddit"],
-                                     title=detailsDict["title"],
-                                     nsfw=True)
-    return crossPost
+    allowedToCrosspost = query_database(
+        '''SELECT allowsCrossPosts FROM Subreddits WHERE name = "''' +
+        detailsDict(["subreddit"]) + '"')[0][0]
+
+    if allowedToCrosspost:
+        crossPost = redditPost.crosspost(subreddit=detailsDict["subreddit"],
+                                         title=detailsDict["title"],
+                                         nsfw=True)
+        print("cross post attempted")
+        return crossPost
+    else:
+        print("cross post skipped")
+        sys.exit()
 
 
 # obtains absolute paths from user specified basePath variable and
@@ -408,4 +418,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
