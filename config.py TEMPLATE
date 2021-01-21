@@ -1,0 +1,12 @@
+imgurClientSecret=''
+imgurClientId=''
+imgurCookie=''
+redditUsername=''
+redditPassword=''
+refreshToken=''  
+redditClientsecret=''
+redditClientid=''
+
+
+basePath=''
+pathToPosts = ''
